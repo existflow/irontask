@@ -43,11 +43,11 @@ usage() {
 install_cli() {
     echo "🔍 Checking for the latest release on GitHub..."
     
-    # Get latest release tag from GitHub API
-    LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    # Get the most recent release (including pre-releases) from GitHub API
+    LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
     
     if [ -z "$LATEST_RELEASE" ]; then
-        echo "❌ Error: Could not find the latest release. Please check if there are any releases at $GITHUB_URL/releases"
+        echo "❌ Error: Could not find any releases. Please check if there are any releases at $GITHUB_URL/releases"
         exit 1
     fi
 
