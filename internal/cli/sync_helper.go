@@ -18,16 +18,16 @@ func MaybeSyncCLI(dbConn *db.DB, forceSync bool) *sync.Client {
 	shouldSync := forceSync || client.ShouldAutoSync()
 
 	if shouldSync {
-		fmt.Println("🔄 Syncing...")
+		fmt.Println("Syncing...")
 		result, err := client.Sync(dbConn, sync.SyncModeMerge)
 		if err != nil {
-			fmt.Printf("⚠️  Sync failed: %v\n", err)
+			fmt.Printf("Sync failed: %v\n", err)
 		} else {
 			_ = client.UpdateSyncTime()
 			if result.Pushed > 0 || result.Pulled > 0 {
-				fmt.Printf("✓ Synced (↑%d ↓%d)\n", result.Pushed, result.Pulled)
+				fmt.Printf("[OK] Synced (↑%d ↓%d)\n", result.Pushed, result.Pulled)
 			} else {
-				fmt.Println("✓ Already up to date")
+				fmt.Println("[OK] Already up to date")
 			}
 		}
 	}
@@ -45,13 +45,13 @@ func MaybeSyncAfterChange(dbConn *db.DB, forceSync bool) {
 	shouldSync := forceSync || client.ShouldAutoSync()
 
 	if shouldSync {
-		fmt.Println("🔄 Syncing changes...")
+		fmt.Println("Syncing changes...")
 		result, err := client.Sync(dbConn, sync.SyncModeMerge)
 		if err != nil {
-			fmt.Printf("⚠️  Sync failed: %v\n", err)
+			fmt.Printf("Sync failed: %v\n", err)
 		} else {
 			_ = client.UpdateSyncTime()
-			fmt.Printf("✓ Synced (↑%d ↓%d)\n", result.Pushed, result.Pulled)
+			fmt.Printf("[OK] Synced (↑%d ↓%d)\n", result.Pushed, result.Pulled)
 		}
 	}
 }

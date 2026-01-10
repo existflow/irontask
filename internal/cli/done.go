@@ -67,7 +67,7 @@ func runDone(cmd *cobra.Command, args []string) error {
 	}
 
 	if done {
-		fmt.Printf("✓ Completed: \"%s\"\n", task.Content)
+		fmt.Printf("[OK] Completed: \"%s\"\n", task.Content)
 	} else {
 		fmt.Printf("○ Reopened: \"%s\"\n", task.Content)
 	}

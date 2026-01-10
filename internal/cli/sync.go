@@ -75,12 +75,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if pull {
 		mode = sync.SyncModeRemoteToLocal
-		fmt.Println("⚠️  Forcing sync from remote (replacing local data)...")
+		fmt.Println("Forcing sync from remote (replacing local data)...")
 	} else if push {
 		mode = sync.SyncModeLocalToRemote
-		fmt.Println("⚠️  Forcing sync from local (replacing remote data)...")
+		fmt.Println("Forcing sync from local (replacing remote data)...")
 	} else {
-		fmt.Println("🔄 Synchronizing...")
+		fmt.Println("Synchronizing...")
 	}
 
 	result, err := client.Sync(database, mode)
@@ -88,7 +88,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
-	fmt.Printf("✓ Sync complete! Pushed: %d, Pulled: %d\n", result.Pushed, result.Pulled)
+	fmt.Printf("[OK] Sync complete! Pushed: %d, Pulled: %d\n", result.Pushed, result.Pulled)
 	return nil
 }
 
@@ -104,7 +104,7 @@ func runSyncStatus(cmd *cobra.Command, args []string) error {
 	if client.IsLoggedIn() {
 		fmt.Printf("User ID:   %s\n", userID)
 		fmt.Printf("Last Sync: %d\n", lastSync)
-		fmt.Println("Status:    ✓ Logged in")
+		fmt.Println("Status:    [OK] Logged in")
 	} else {
 		fmt.Println("Status:    Not logged in")
 	}
@@ -134,8 +134,8 @@ func runSyncKey(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("\n✓ Encryption key generated!")
-		fmt.Println("\n⚠️  IMPORTANT: Save this key! You need it to decrypt on other devices.")
+		fmt.Println("\n[OK] Encryption key generated!")
+		fmt.Println("\nIMPORTANT: Save this key! You need it to decrypt on other devices.")
 	}
 
 	fmt.Printf("\nEncryption Key: %s\n", key)
@@ -153,7 +153,7 @@ func runSyncConfig(cmd *cobra.Command, args []string) error {
 		if err := client.SetServer(server); err != nil {
 			return err
 		}
-		fmt.Printf("✓ Server set to: %s\n", server)
+		fmt.Printf("[OK] Server set to: %s\n", server)
 	} else {
 		// Just show config
 		url, _, _ := client.GetStatus()

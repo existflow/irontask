@@ -74,6 +74,6 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to delete task: %w", err)
 	}
 
-	fmt.Printf("🗑️  Deleted: \"%s\"\n", task.Content)
+	fmt.Printf("Deleted: \"%s\"\n", task.Content)
 	return nil
 }

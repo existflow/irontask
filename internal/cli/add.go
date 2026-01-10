@@ -93,7 +93,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		projectName = project.Name
 	}
 
-	fmt.Printf("✓ Added to [%s]: \"%s\" (P%d)\n", projectName, content, addPriority)
+	fmt.Printf("[OK] Added to [%s]: \"%s\" (P%d)\n", projectName, content, addPriority)
 
 	// Sync after change if flag is set or auto-sync is due
 	MaybeSyncAfterChange(dbConn, addSync)

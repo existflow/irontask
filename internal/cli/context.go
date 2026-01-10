@@ -102,7 +102,7 @@ func ClearContext() error {
 func runContextShow(cmd *cobra.Command, args []string) error {
 	ctx := GetCurrentContext()
 	if ctx == "" {
-		fmt.Println("📥 Current context: Inbox (default)")
+		fmt.Println("Current context: Inbox (default)")
 		return nil
 	}
 
@@ -116,7 +116,7 @@ func runContextShow(cmd *cobra.Command, args []string) error {
 
 	project, err := database.GetProject(context.Background(), ctx)
 	if err != nil {
-		fmt.Printf("⚠️  Context set to '%s' but project not found\n", ctx)
+		fmt.Printf("Context set to '%s' but project not found\n", ctx)
 		return nil
 	}
 
@@ -187,6 +187,6 @@ func runContextClear(cmd *cobra.Command, args []string) error {
 	if err := ClearContext(); err != nil {
 		return fmt.Errorf("failed to clear context: %w", err)
 	}
-	fmt.Println("📥 Context cleared, using Inbox")
+	fmt.Println("Context cleared, using Inbox")
 	return nil
 }

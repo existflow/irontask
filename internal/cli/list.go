@@ -120,9 +120,9 @@ func printTasksByProject(db *db.DB, tasks []database.Task) {
 
 func printTask(num int, t database.Task) {
 	// Status icon
-	icon := "○"
+	icon := "[ ]"
 	if t.Done {
-		icon = "✓"
+		icon = "[x]"
 	}
 
 	// Priority indicator
@@ -144,7 +144,7 @@ func printTask(num int, t database.Task) {
 		parsed, _ := time.Parse(time.RFC3339, t.DueDate.String)
 		due = parsed.Format("Jan 2")
 		if parsed.Before(time.Now()) {
-			due = "⚠️ " + due
+			due = "" + due
 		}
 	}
 

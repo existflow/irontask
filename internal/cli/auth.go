@@ -56,16 +56,16 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	token, _ := cmd.Flags().GetString("token")
 
 	if token != "" {
-		fmt.Printf("🔄 Verifying magic link token...\n")
+		fmt.Printf("Verifying magic link token...\n")
 		if err := client.VerifyMagicLink(token); err != nil {
 			return err
 		}
-		fmt.Println("✅ Logged in successfully!")
+		fmt.Println("Logged in successfully!")
 		return nil
 	}
 
 	if email != "" {
-		fmt.Printf("🔄 Requesting magic link for %s...\n", email)
+		fmt.Printf("Requesting magic link for %s...\n", email)
 		token, err := client.RequestMagicLink(email)
 		if err != nil {
 			return err
@@ -82,15 +82,15 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		inputToken = strings.TrimSpace(inputToken)
 
 		if inputToken == "" {
-			fmt.Println("❌ Token required.")
+			fmt.Println("Token required.")
 			return nil
 		}
 
-		fmt.Printf("🔄 Verifying magic link...\n")
+		fmt.Printf("Verifying magic link...\n")
 		if err := client.VerifyMagicLink(inputToken); err != nil {
 			return err
 		}
-		fmt.Println("✅ Logged in successfully!")
+		fmt.Println("Logged in successfully!")
 		return nil
 	}
 
@@ -106,12 +106,12 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	password := string(passwordBytes)
 	fmt.Println()
 
-	fmt.Println("🔄 Logging in...")
+	fmt.Println("Logging in...")
 	if err := client.Login(username, password); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Logged in successfully!")
+	fmt.Println("Logged in successfully!")
 	return nil
 }
 
@@ -126,12 +126,12 @@ func runLogout(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("🔄 Logging out...")
+	fmt.Println("Logging out...")
 	if err := client.Logout(); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Logged out successfully.")
+	fmt.Println("Logged out successfully.")
 	return nil
 }
 
@@ -165,11 +165,11 @@ func runRegister(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("passwords do not match")
 	}
 
-	fmt.Println("🔄 Creating account...")
+	fmt.Println("Creating account...")
 	if err := client.Register(username, email, password); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Account created and logged in!")
+	fmt.Println("Account created and logged in!")
 	return nil
 }

@@ -47,8 +47,9 @@ type Model struct {
 	allTasks []database.Task // Original unfiltered list
 
 	// Sync
-	syncClient *sync.Client
-	autoSync   *sync.AutoSync
+	syncClient      *sync.Client
+	autoSync        *sync.AutoSync
+	syncRefreshChan chan struct{} // Channel to trigger UI refresh on remote sync
 
 	// UI state
 	width      int
@@ -90,6 +91,7 @@ type keyMap struct {
 	Quit     key.Binding
 	Escape   key.Binding
 	Logout   key.Binding
+	Refresh  key.Binding
 }
 
 var keys = keyMap{
@@ -107,6 +109,7 @@ var keys = keyMap{
 	Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	Escape:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
 	Logout:  key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logout")),
+	Refresh: key.NewBinding(key.WithKeys("R", "r"), key.WithHelp("R", "refresh/sync")),
 }
 
 // NewModel creates a new TUI model
@@ -117,11 +120,12 @@ func NewModel(database *db.DB) Model {
 	ti.Width = 50
 
 	m := Model{
-		db:           database,
-		pane:         PaneSidebar,
-		mode:         ModeNormal,
-		input:        ti,
-		recentlyDone: make(map[string]time.Time),
+		db:              database,
+		pane:            PaneSidebar,
+		mode:            ModeNormal,
+		input:           ti,
+		recentlyDone:    make(map[string]time.Time),
+		syncRefreshChan: make(chan struct{}, 1), // Buffered to avoid blocking
 	}
 
 	// Initialize sync
@@ -130,9 +134,13 @@ func NewModel(database *db.DB) Model {
 		m.syncClient = sClient
 		m.autoSync = sync.NewAutoSync(sClient, database)
 
-		// Set callback to reload data when remote changes are pulled
+		// Set callback to signal UI refresh when remote changes are pulled
 		m.autoSync.SetOnPull(func() {
-			m.loadData()
+			// Non-blocking send to trigger UI refresh
+			select {
+			case m.syncRefreshChan <- struct{}{}:
+			default:
+			}
 		})
 
 		// Trigger initial sync
@@ -209,15 +217,29 @@ func (m *Model) currentTask() *database.Task {
 // tickMsg is sent every second for time updates
 type tickMsg time.Time
 
+// syncRefreshMsg is sent when remote changes are pulled
+type syncRefreshMsg struct{}
+
 // Init initializes the model with a tick command
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tickCmd())
+	return tea.Batch(tickCmd(), m.waitForSyncRefresh())
 }
 
 func tickCmd() tea.Cmd {
 	return tea.Every(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+// waitForSyncRefresh listens for sync refresh signals
+func (m Model) waitForSyncRefresh() tea.Cmd {
+	if m.syncRefreshChan == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		<-m.syncRefreshChan
+		return syncRefreshMsg{}
+	}
 }
 
 // Update handles messages
@@ -239,6 +261,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Continue ticking for time updates
 		return m, tickCmd()
+
+	case syncRefreshMsg:
+		// Remote changes were pulled - reload data
+		m.loadData()
+		m.message = "Synced from cloud"
+		return m, m.waitForSyncRefresh()
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -460,6 +488,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else {
 				m.message = "Not logged in"
+			}
+
+		case key.Matches(msg, keys.Refresh):
+			if m.autoSync != nil {
+				m.message = "Syncing..."
+				m.autoSync.TriggerSync()
+			} else if m.syncClient == nil {
+				m.message = "Not logged in - use 'irontask auth login' first"
 			}
 		}
 	}
@@ -824,7 +860,7 @@ func (m Model) renderModal() string {
 	case ModeEditTask:
 		title = "Edit Task"
 	case ModeFilter:
-		title = "🔍 Filter Tasks"
+		title = "Filter Tasks"
 	}
 
 	proj := m.currentProject()
@@ -852,7 +888,7 @@ func (m Model) renderFilterModal() string {
 	}
 
 	// Header with scope toggle
-	content += lipgloss.NewStyle().Bold(true).Foreground(Primary).Render("🔍 Search") + "  "
+	content += lipgloss.NewStyle().Bold(true).Foreground(Primary).Render("Search") + "  "
 	content += HelpStyle.Render(scope) + "\n"
 	content += HelpStyle.Render("Tab: toggle scope") + "\n\n"
 
@@ -891,9 +927,9 @@ func (m Model) renderFilterModal() string {
 			}
 
 			t := tasksSource[idx]
-			icon := "○"
+			icon := "[ ]"
 			if t.Done {
-				icon = "✓"
+				icon = "[x]"
 			}
 
 			// Highlight current selection

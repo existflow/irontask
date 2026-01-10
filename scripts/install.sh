@@ -48,7 +48,7 @@ usage() {
 
 # Install or Update logic
 install_cli() {
-    echo "🔍 Checking for releases on GitHub..."
+    echo "Checking for releases on GitHub..."
     
     if [ "$USE_PRERELEASE" = true ]; then
         echo "   (Including pre-releases)"
@@ -61,51 +61,51 @@ install_cli() {
     fi
     
     if [ -z "$LATEST_RELEASE" ]; then
-        echo "❌ Error: Could not find any releases. Please check: $GITHUB_URL/releases"
+        echo "Error: Could not find any releases. Please check: $GITHUB_URL/releases"
         exit 1
     fi
 
     ASSET_NAME="${BINARY_NAME}-${OS}-${ARCH}"
     DOWNLOAD_URL="${GITHUB_URL}/releases/download/${LATEST_RELEASE}/${ASSET_NAME}"
     
-    echo "📥 Downloading ${BINARY_NAME} ${LATEST_RELEASE} for ${OS}/${ARCH}..."
+    echo "Downloading ${BINARY_NAME} ${LATEST_RELEASE} for ${OS}/${ARCH}..."
     
     tmp_dir=$(mktemp -d)
     if ! curl -sSL -f -o "${tmp_dir}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
-        echo "❌ Error: Failed to download. Asset may not exist for your platform."
+        echo "Error: Failed to download. Asset may not exist for your platform."
         rm -rf "$tmp_dir"
         exit 1
     fi
     
     chmod +x "${tmp_dir}/${BINARY_NAME}"
     
-    echo "🚀 Installing to ${INSTALL_DIR}/${BINARY_NAME} (requires sudo)..."
+    echo "Installing to ${INSTALL_DIR}/${BINARY_NAME} (requires sudo)..."
     sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
     rm -rf "$tmp_dir"
     
-    echo "✅ ${BINARY_NAME} ${LATEST_RELEASE} installed successfully!"
+    echo "${BINARY_NAME} ${LATEST_RELEASE} installed successfully!"
     echo "Try running: ${BINARY_NAME} --help"
 }
 
 # Removal logic
 remove_cli() {
-    echo "🗑️  Removing ${BINARY_NAME} binary from ${INSTALL_DIR}..."
+    echo "Removing ${BINARY_NAME} binary from ${INSTALL_DIR}..."
     if [ -f "${INSTALL_DIR}/${BINARY_NAME}" ]; then
         sudo rm -f "${INSTALL_DIR}/${BINARY_NAME}"
-        echo "✅ Binary removed."
+        echo "Binary removed."
     else
-        echo "ℹ️  Binary not found in ${INSTALL_DIR}."
+        echo "Binary not found in ${INSTALL_DIR}."
     fi
 
-    echo "🗑️  Removing configuration directory ${CONFIG_DIR}..."
+    echo "Removing configuration directory ${CONFIG_DIR}..."
     if [ -d "${CONFIG_DIR}" ]; then
         rm -rf "${CONFIG_DIR}"
-        echo "✅ Config directory removed."
+        echo "Config directory removed."
     else
-        echo "ℹ️  Config directory not found."
+        echo "Config directory not found."
     fi
     
-    echo "✨ IronTask has been completely removed."
+    echo "IronTask has been completely removed."
 }
 
 # Parse arguments
@@ -128,7 +128,7 @@ for arg in "$@"; do
             USE_PRERELEASE=true
             ;;
         *)
-            echo "❌ Error: Unknown option '$arg'"
+            echo "Error: Unknown option '$arg'"
             usage
             exit 1
             ;;

@@ -82,7 +82,7 @@ func (s *Server) handleMagicLink(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
-	fmt.Printf("\n✨ MAGIC LINK GENERATED ✨\nEmail: %s\nToken: %s\n\n", req.Email, token)
+	fmt.Printf("\nMAGIC LINK GENERATED \nEmail: %s\nToken: %s\n\n", req.Email, token)
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "if email exists, a magic link will be sent",

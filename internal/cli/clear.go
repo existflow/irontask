@@ -36,7 +36,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 	}
 
 	if !force {
-		fmt.Printf("⚠️  Are you sure you want to clear data? (y/N): ")
+		fmt.Printf("Are you sure you want to clear data? (y/N): ")
 		var response string
 		_, _ = fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" {
@@ -63,18 +63,18 @@ func runClear(cmd *cobra.Command, args []string) error {
 		if err := client.ClearLocal(dbConn); err != nil {
 			return fmt.Errorf("failed to clear local data: %w", err)
 		}
-		fmt.Println("✅ Local data cleared.")
+		fmt.Println("Local data cleared.")
 	}
 
 	if remote {
 		if !client.IsLoggedIn() {
-			fmt.Println("⚠️  Skipping remote clear: not logged in.")
+			fmt.Println("Skipping remote clear: not logged in.")
 		} else {
 			fmt.Println("🌐 Clearing remote data...")
 			if err := client.ClearRemote(); err != nil {
 				return fmt.Errorf("failed to clear remote data: %w", err)
 			}
-			fmt.Println("✅ Remote data cleared.")
+			fmt.Println("Remote data cleared.")
 		}
 	}
 

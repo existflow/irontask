@@ -28,7 +28,7 @@ echo "   Response: $RESPONSE"
 TOKEN=$(echo $RESPONSE | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ]; then
-  echo "❌ Failed to get magic link token"
+  echo "[ERROR] Failed to get magic link token"
   exit 1
 fi
 
@@ -44,8 +44,8 @@ echo "   Response: $VERIFY_RESPONSE"
 SESSION_TOKEN=$(echo $VERIFY_RESPONSE | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
 if [ -z "$SESSION_TOKEN" ]; then
-  echo "❌ Verification failed or no session token returned"
+  echo "[ERROR] Verification failed or no session token returned"
   exit 1
 else
-  echo "✅ Magic Link Verified! Session Token: $SESSION_TOKEN"
+  echo "[OK] Magic Link Verified! Session Token: $SESSION_TOKEN"
 fi

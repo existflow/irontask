@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/existflow/irontask/server/database"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/existflow/irontask/server/database"
 )
 
 // SyncItem represents an encrypted item for sync
@@ -151,6 +151,7 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 			version, err := s.queries.UpsertProject(c.Request().Context(), database.UpsertProjectParams{
 				UserID:        userUUID,
 				ClientID:      item.ClientID,
+				Color:         sql.NullString{String: "", Valid: true},
 				EncryptedData: data,
 				Deleted:       sql.NullBool{Bool: item.Deleted, Valid: true},
 			})

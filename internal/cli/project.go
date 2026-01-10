@@ -85,7 +85,7 @@ func runProjectNew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create project: %w", err)
 	}
 
-	fmt.Printf("✓ Created project: %s (id: %s)\n", name, id)
+	fmt.Printf("[OK] Created project: %s (id: %s)\n", name, id)
 	return nil
 }
 
@@ -154,6 +154,6 @@ func runProjectDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to delete project: %w", err)
 	}
 
-	fmt.Printf("🗑️  Deleted project: %s\n", project.Name)
+	fmt.Printf("Deleted project: %s\n", project.Name)
 	return nil
 }
