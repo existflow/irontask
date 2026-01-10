@@ -1,0 +1,36 @@
+# Binaries
+irontask
+irontask-server
+task
+main
+*.exe
+*.test
+
+# OS specific patterns
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go specific
+vendor/
+go.work
+
+# Private Configuration
+config.yaml
+.env
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
+*.sqlite

@@ -1,0 +1,29 @@
+version: "2"
+sql:
+  - schema: "sql/client/schema.sql"
+    queries: "sql/client/queries.sql"
+    engine: "sqlite"
+    gen:
+      go:
+        package: "database"
+        out: "internal/database"
+        emit_json_tags: true
+        emit_interface: true
+        overrides:
+          - db_type: "INTEGER"
+            go_type: "int64"
+          - column: "tasks.done"
+            go_type: "bool"
+          - column: "projects.archived"
+            go_type: "bool"
+          - column: "tasks.priority"
+            go_type: "int"
+  - schema: "sql/server/schema.sql"
+    queries: "sql/server/queries.sql"
+    engine: "postgresql"
+    gen:
+      go:
+        package: "database"
+        out: "server/database"
+        emit_json_tags: true
+        emit_interface: true
