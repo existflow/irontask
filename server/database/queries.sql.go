@@ -14,7 +14,7 @@ import (
 )
 
 const clearProjects = `-- name: ClearProjects :exec
-DELETE FROM projects WHERE user_id = $1
+DELETE FROM irontask.projects WHERE user_id = $1
 `
 
 func (q *Queries) ClearProjects(ctx context.Context, userID uuid.UUID) error {
@@ -23,7 +23,7 @@ func (q *Queries) ClearProjects(ctx context.Context, userID uuid.UUID) error {
 }
 
 const clearTasks = `-- name: ClearTasks :exec
-DELETE FROM tasks WHERE user_id = $1
+DELETE FROM irontask.tasks WHERE user_id = $1
 `
 
 func (q *Queries) ClearTasks(ctx context.Context, userID uuid.UUID) error {
@@ -32,7 +32,7 @@ func (q *Queries) ClearTasks(ctx context.Context, userID uuid.UUID) error {
 }
 
 const createMagicLink = `-- name: CreateMagicLink :exec
-INSERT INTO magic_links (email, token, expires_at)
+INSERT INTO irontask.magic_links (email, token, expires_at)
 VALUES ($1, $2, $3)
 `
 
@@ -48,7 +48,7 @@ func (q *Queries) CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams
 }
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (user_id, token, expires_at)
+INSERT INTO irontask.sessions (user_id, token, expires_at)
 VALUES ($1, $2, $3)
 RETURNING token
 `
@@ -67,7 +67,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (s
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (username, email, password_hash)
+INSERT INTO irontask.users (username, email, password_hash)
 VALUES ($1, $2, $3)
 RETURNING id, username, email, created_at
 `
@@ -98,7 +98,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateU
 }
 
 const deleteSession = `-- name: DeleteSession :exec
-DELETE FROM sessions WHERE token = $1
+DELETE FROM irontask.sessions WHERE token = $1
 `
 
 func (q *Queries) DeleteSession(ctx context.Context, token string) error {
@@ -108,7 +108,7 @@ func (q *Queries) DeleteSession(ctx context.Context, token string) error {
 
 const getMagicLink = `-- name: GetMagicLink :one
 SELECT email, expires_at, used
-FROM magic_links
+FROM irontask.magic_links
 WHERE token = $1
 `
 
@@ -127,7 +127,7 @@ func (q *Queries) GetMagicLink(ctx context.Context, token string) (GetMagicLinkR
 
 const getProjectsChanged = `-- name: GetProjectsChanged :many
 SELECT client_id, 'project' as type, sync_version, encrypted_data, deleted
-FROM projects
+FROM irontask.projects
 WHERE user_id = $1 AND sync_version > $2
 `
 
@@ -175,7 +175,7 @@ func (q *Queries) GetProjectsChanged(ctx context.Context, arg GetProjectsChanged
 
 const getSession = `-- name: GetSession :one
 SELECT user_id, expires_at
-FROM sessions
+FROM irontask.sessions
 WHERE token = $1 AND expires_at > NOW()
 `
 
@@ -193,7 +193,7 @@ func (q *Queries) GetSession(ctx context.Context, token string) (GetSessionRow, 
 
 const getTasksChanged = `-- name: GetTasksChanged :many
 SELECT client_id, project_id, 'task' as type, sync_version, encrypted_data, deleted
-FROM tasks
+FROM irontask.tasks
 WHERE user_id = $1 AND sync_version > $2
 `
 
@@ -243,7 +243,7 @@ func (q *Queries) GetTasksChanged(ctx context.Context, arg GetTasksChangedParams
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, username, email, password_hash
-FROM users
+FROM irontask.users
 WHERE email = $1
 `
 
@@ -268,7 +268,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, username, email
-FROM users
+FROM irontask.users
 WHERE id = $1
 `
 
@@ -287,7 +287,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 
 const getUserByUsername = `-- name: GetUserByUsername :one
 SELECT id, username, email, password_hash
-FROM users
+FROM irontask.users
 WHERE username = $1
 `
 
@@ -311,7 +311,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUs
 }
 
 const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :exec
-UPDATE magic_links SET used = TRUE WHERE token = $1
+UPDATE irontask.magic_links SET used = TRUE WHERE token = $1
 `
 
 func (q *Queries) MarkMagicLinkUsed(ctx context.Context, token string) error {
@@ -320,14 +320,14 @@ func (q *Queries) MarkMagicLinkUsed(ctx context.Context, token string) error {
 }
 
 const upsertProject = `-- name: UpsertProject :one
-INSERT INTO projects (user_id, client_id, name, color, encrypted_data, sync_version, deleted, updated_at)
+INSERT INTO irontask.projects (user_id, client_id, name, color, encrypted_data, sync_version, deleted, updated_at)
 VALUES ($1, $2, '', $3, $4, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM projects WHERE user_id = $1), 
+    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1), 
     $5, NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM projects WHERE user_id = $1),
+    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1),
     updated_at = NOW()
 RETURNING sync_version
 `
@@ -354,15 +354,15 @@ func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) (s
 }
 
 const upsertTask = `-- name: UpsertTask :one
-INSERT INTO tasks (user_id, client_id, project_id, encrypted_data, deleted, sync_version, updated_at)
+INSERT INTO irontask.tasks (user_id, client_id, project_id, encrypted_data, deleted, sync_version, updated_at)
 VALUES ($1, $2, $3, $4, $5, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM tasks WHERE user_id = $1),
+    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
     NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET project_id = EXCLUDED.project_id,
     encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM tasks WHERE user_id = $1),
+    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
     updated_at = NOW()
 RETURNING sync_version
 `

@@ -1,0 +1,35 @@
+# Render Blueprint - Multi-environment deploy
+# https://render.com/docs/infrastructure-as-code
+
+services:
+  # Production Server (main branch)
+  - type: web
+    name: irontask-server
+    env: docker
+    dockerfilePath: ./Dockerfile.server
+    branch: main
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        value: 8080
+      - key: ENV
+        value: production
+
+  # Development Server (development branch)
+  - type: web
+    name: irontask-server-dev
+    env: docker
+    dockerfilePath: ./Dockerfile.server
+    branch: development
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PORT
+        value: 8080
+      - key: ENV
+        value: development

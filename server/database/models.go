@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type MagicLink struct {
+type IrontaskMagicLink struct {
 	ID        uuid.UUID    `json:"id"`
 	Email     string       `json:"email"`
 	Token     string       `json:"token"`
@@ -20,7 +20,7 @@ type MagicLink struct {
 	CreatedAt sql.NullTime `json:"created_at"`
 }
 
-type Project struct {
+type IrontaskProject struct {
 	ID            uuid.UUID      `json:"id"`
 	UserID        uuid.UUID      `json:"user_id"`
 	ClientID      string         `json:"client_id"`
@@ -33,7 +33,7 @@ type Project struct {
 	UpdatedAt     sql.NullTime   `json:"updated_at"`
 }
 
-type Session struct {
+type IrontaskSession struct {
 	ID        uuid.UUID    `json:"id"`
 	UserID    uuid.UUID    `json:"user_id"`
 	Token     string       `json:"token"`
@@ -41,7 +41,7 @@ type Session struct {
 	CreatedAt sql.NullTime `json:"created_at"`
 }
 
-type Task struct {
+type IrontaskTask struct {
 	ID            uuid.UUID     `json:"id"`
 	UserID        uuid.UUID     `json:"user_id"`
 	ClientID      string        `json:"client_id"`
@@ -53,7 +53,7 @@ type Task struct {
 	UpdatedAt     sql.NullTime  `json:"updated_at"`
 }
 
-type User struct {
+type IrontaskUser struct {
 	ID           uuid.UUID    `json:"id"`
 	Username     string       `json:"username"`
 	Email        string       `json:"email"`
