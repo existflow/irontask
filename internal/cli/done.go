@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/spf13/cobra"
 )
 
 var doneCmd = &cobra.Command{
@@ -34,7 +34,9 @@ func runDone(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		_ = dbConn.Close()
+	}()
 
 	taskID := args[0]
 	ctx := context.Background()

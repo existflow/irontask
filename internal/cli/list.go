@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/model"
+	"github.com/spf13/cobra"
 )
 
 var listCmd = &cobra.Command{
@@ -42,7 +42,9 @@ func runList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		_ = dbConn.Close()
+	}()
 
 	var projectID interface{}
 	if listProject != "" {

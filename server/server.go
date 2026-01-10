@@ -2,12 +2,13 @@ package server
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 
+	"github.com/existflow/irontask/server/database"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	_ "github.com/lib/pq"
-	"github.com/existflow/irontask/server/database"
 )
 
 // Server is the sync server
@@ -49,7 +50,14 @@ func (s *Server) setupEcho() {
 	e.HideBanner = true
 
 	// Middleware
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus: true,
+		LogURI:    true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			fmt.Printf("REQUEST: %s %s status=%d\n", v.URI, v.Method, v.Status)
+			return nil
+		},
+	}))
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(middleware.CORS())

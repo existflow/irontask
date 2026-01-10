@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
@@ -22,7 +22,9 @@ Run 'task' without arguments to launch the interactive TUI.`,
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
-		defer database.Close()
+		defer func() {
+			_ = database.Close()
+		}()
 
 		m := tui.NewModel(database)
 		p := tea.NewProgram(m, tea.WithAltScreen())

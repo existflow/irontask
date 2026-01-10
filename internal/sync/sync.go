@@ -68,7 +68,7 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 		}
 		// 2. Clear last sync version to pull everything
 		c.config.LastSync = 0
-		c.saveConfig()
+		_ = c.saveConfig()
 
 		// 3. Pull remote changes
 		pulled, err := c.pullChanges(database)
@@ -107,7 +107,7 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 
 	// Mark as synced once after first successful sync
 	if !c.config.HasSyncedOnce {
-		c.SetSyncedOnce()
+		_ = c.SetSyncedOnce()
 	}
 
 	return result, nil
@@ -180,7 +180,9 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -188,7 +190,7 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	}
 
 	var result SyncPushResponse
-	json.NewDecoder(resp.Body).Decode(&result)
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 
 	return len(result.Updated), nil
 }
@@ -204,7 +206,9 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -212,7 +216,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 	}
 
 	var result SyncPullResponse
-	json.NewDecoder(resp.Body).Decode(&result)
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 
 	// Apply remote changes
 	ctx := context.Background()
@@ -228,23 +232,19 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				Name  string `json:"name"`
 				Color string `json:"color"`
 			}
-			json.Unmarshal(data, &p)
+			_ = json.Unmarshal(data, &p)
 
 			// Upsert project
 			_, err := dbConn.GetProject(ctx, item.ClientID)
 			if err != nil {
 				// Not found, create
-				dbConn.CreateProject(ctx, database.CreateProjectParams{
+				_ = dbConn.CreateProject(ctx, database.CreateProjectParams{
 					ID:        item.ClientID,
 					Name:      p.Name,
 					Color:     sql.NullString{String: p.Color, Valid: true},
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
-			} else {
-				// Update existing
-				// Note: UpdateProject query was not generated, need to add it if full update logic is needed.
-				// For now assuming immutable or add UpdateProject query later.
 			}
 
 		case "task":
@@ -253,13 +253,13 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				Priority int    `json:"priority"`
 				Done     bool   `json:"done"`
 			}
-			json.Unmarshal(data, &t)
+			_ = json.Unmarshal(data, &t)
 
 			// Upsert task
 			tExisting, err := dbConn.GetTask(ctx, item.ClientID)
 			if err != nil {
 				// Create
-				dbConn.CreateTask(ctx, database.CreateTaskParams{
+				_ = dbConn.CreateTask(ctx, database.CreateTaskParams{
 					ID:        item.ClientID,
 					ProjectID: item.ProjectID,
 					Content:   t.Content,
@@ -270,7 +270,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				})
 			} else {
 				// Update
-				dbConn.UpdateTask(ctx, database.UpdateTaskParams{
+				_ = dbConn.UpdateTask(ctx, database.UpdateTaskParams{
 					ID:        tExisting.ID,
 					ProjectID: item.ProjectID,
 					Content:   t.Content,
@@ -285,7 +285,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 	// Update last sync version
 	if result.SyncVersion > c.config.LastSync {
 		c.config.LastSync = result.SyncVersion
-		c.saveConfig()
+		_ = c.saveConfig()
 	}
 
 	return len(result.Items), nil

@@ -12,11 +12,11 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/google/uuid"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/model"
 	"github.com/existflow/irontask/internal/sync"
+	"github.com/google/uuid"
 )
 
 // Pane represents which pane is focused
@@ -70,9 +70,7 @@ type Model struct {
 	matchCursor  int   // Current match for n/N navigation
 	searchAll    bool  // true = all projects, false = current project
 
-	// Messages
 	message string
-	err     error
 }
 
 // Key bindings
@@ -319,7 +317,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if task != nil {
 					priority := int(msg.String()[0] - '0')
 					task.Priority = priority
-					m.db.UpdateTask(context.Background(), database.UpdateTaskParams{
+					_ = m.db.UpdateTask(context.Background(), database.UpdateTaskParams{
 						ID:        task.ID,
 						ProjectID: task.ProjectID,
 						Content:   task.Content,
@@ -356,7 +354,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				task := m.currentTask()
 				if task != nil {
 					newDone := !task.Done
-					m.db.MarkTaskDone(context.Background(), database.MarkTaskDoneParams{
+					_ = m.db.MarkTaskDone(context.Background(), database.MarkTaskDoneParams{
 						ID:        task.ID,
 						Done:      newDone,
 						UpdatedAt: time.Now().Format(time.RFC3339),
@@ -378,7 +376,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pane == PaneTaskList && len(m.tasks) > 0 {
 				task := m.currentTask()
 				if task != nil {
-					m.db.DeleteTask(context.Background(), database.DeleteTaskParams{
+					_ = m.db.DeleteTask(context.Background(), database.DeleteTaskParams{
 						ID:        task.ID,
 						DeletedAt: sql.NullString{String: time.Now().Format(time.RFC3339), Valid: true},
 						UpdatedAt: time.Now().Format(time.RFC3339),
@@ -522,7 +520,7 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			task := m.currentTask()
 			if task != nil {
 				task.Content = value
-				m.db.UpdateTask(context.Background(), database.UpdateTaskParams{
+				_ = m.db.UpdateTask(context.Background(), database.UpdateTaskParams{
 					ID:        task.ID,
 					ProjectID: task.ProjectID,
 					Content:   value,

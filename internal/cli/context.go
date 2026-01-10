@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/spf13/cobra"
 )
 
 var contextCmd = &cobra.Command{
@@ -110,7 +110,9 @@ func runContextShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer database.Close()
+	defer func() {
+		_ = database.Close()
+	}()
 
 	project, err := database.GetProject(context.Background(), ctx)
 	if err != nil {
@@ -128,7 +130,9 @@ func runContextList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer database.Close()
+	defer func() {
+		_ = database.Close()
+	}()
 
 	projects, err := database.ListProjects(context.Background())
 	if err != nil {
@@ -162,7 +166,9 @@ func runContextSet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer database.Close()
+	defer func() {
+		_ = database.Close()
+	}()
 
 	project, err := database.GetProject(context.Background(), projectID)
 	if err != nil {

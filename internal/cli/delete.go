@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/config"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/spf13/cobra"
 )
 
 var deleteCmd = &cobra.Command{
@@ -30,7 +30,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		_ = dbConn.Close()
+	}()
 
 	taskID := args[0]
 	ctx := context.Background()
@@ -57,7 +59,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("About to delete: \"%s\" (ID: %s)\n", task.Content, task.ID)
 		fmt.Print("Are you sure? [y/N]: ")
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" {
 			fmt.Println("Cancelled.")
 			return nil

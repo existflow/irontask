@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/model"
+	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 )
 
 var addCmd = &cobra.Command{
@@ -43,7 +43,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		_ = dbConn.Close()
+	}()
 
 	content := args[0]
 	if len(args) > 1 {

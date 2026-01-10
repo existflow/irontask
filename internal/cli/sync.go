@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/sync"
+	"github.com/spf13/cobra"
 )
 
 var syncCmd = &cobra.Command{
@@ -61,7 +61,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer database.Close()
+	defer func() {
+		_ = database.Close()
+	}()
 
 	mode := sync.SyncModeMerge
 	pull, _ := cmd.Flags().GetBool("pull")

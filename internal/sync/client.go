@@ -63,7 +63,7 @@ func (c *Client) loadConfig() {
 	}
 
 	c.config = &Config{}
-	json.Unmarshal(data, c.config)
+	_ = json.Unmarshal(data, c.config)
 }
 
 func (c *Client) saveConfig() error {
@@ -118,7 +118,9 @@ func (c *Client) Register(username, email, password string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -154,7 +156,9 @@ func (c *Client) Login(username, password string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -189,7 +193,9 @@ func (c *Client) RequestMagicLink(email string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to connect: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -199,7 +205,7 @@ func (c *Client) RequestMagicLink(email string) (string, error) {
 	var result struct {
 		Token string `json:"token"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	_ = json.NewDecoder(resp.Body).Decode(&result)
 
 	return result.Token, nil
 }
@@ -212,7 +218,9 @@ func (c *Client) VerifyMagicLink(token string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -240,7 +248,7 @@ func (c *Client) Logout() error {
 		req, err := http.NewRequest("POST", c.config.ServerURL+"/api/v1/logout", nil)
 		if err == nil {
 			req.Header.Set("Authorization", "Bearer "+c.config.Token)
-			c.httpClient.Do(req) // We don't care about the response/error much here, just best effort
+			_, _ = c.httpClient.Do(req) // We don't care about the response/error much here, just best effort
 		}
 	}
 
@@ -279,7 +287,9 @@ func (c *Client) ClearRemote() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

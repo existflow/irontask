@@ -59,14 +59,13 @@ func (a *AutoSync) performSync() {
 	a.pending = false
 	a.mu.Unlock()
 
-	result, err := a.client.Sync(a.db, SyncModeMerge)
+	_, err := a.client.Sync(a.db, SyncModeMerge)
 	if err != nil {
 		return
 	}
 
-	if result.Pushed > 0 || result.Pulled > 0 {
-		// keeping silent for TUI
-	}
+	// keeping silent for TUI
+
 }
 
 // Stop stops the auto-sync manager

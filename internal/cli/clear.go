@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/existflow/irontask/internal/db"
 	"github.com/existflow/irontask/internal/sync"
+	"github.com/spf13/cobra"
 )
 
 var clearCmd = &cobra.Command{
@@ -38,7 +38,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 	if !force {
 		fmt.Printf("⚠️  Are you sure you want to clear data? (y/N): ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" {
 			fmt.Println("Aborted.")
 			return nil
@@ -49,7 +49,9 @@ func runClear(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer dbConn.Close()
+	defer func() {
+		_ = dbConn.Close()
+	}()
 
 	client, err := sync.NewClient()
 	if err != nil {

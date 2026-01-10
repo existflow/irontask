@@ -22,7 +22,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
-	defer srv.Close()
+	defer func() {
+		if err := srv.Close(); err != nil {
+			log.Printf("Error closing server: %v", err)
+		}
+	}()
 
 	log.Printf("IronTask sync server starting on :%s", port)
 	if err := srv.Start(":" + port); err != nil {
