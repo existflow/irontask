@@ -57,8 +57,8 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	tasks, err := dbConn.ListTasks(context.Background(), database.ListTasksParams{
-		ProjectID:   projectID,
-		IncludeDone: listIncludeDone,
+		ProjectID: projectID,
+		ShowAll:   listIncludeDone,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list tasks: %w", err)
@@ -87,7 +87,7 @@ func runList(cmd *cobra.Command, args []string) error {
 func printTasks(projectName string, tasks []database.Task) {
 	pending := 0
 	for _, t := range tasks {
-		if !t.Done {
+		if t.Status.String != "done" {
 			pending++
 		}
 	}
@@ -121,8 +121,10 @@ func printTasksByProject(db *db.DB, tasks []database.Task) {
 func printTask(num int, t database.Task) {
 	// Status icon
 	icon := "[ ]"
-	if t.Done {
+	if t.Status.String == "done" {
 		icon = "[x]"
+	} else if t.Status.String == "ignore" {
+		icon = "[-]"
 	}
 
 	// Priority indicator

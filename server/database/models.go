@@ -24,6 +24,7 @@ type IrontaskProject struct {
 	ID            uuid.UUID      `json:"id"`
 	UserID        uuid.UUID      `json:"user_id"`
 	ClientID      string         `json:"client_id"`
+	Slug          string         `json:"slug"`
 	Name          string         `json:"name"`
 	Color         sql.NullString `json:"color"`
 	EncryptedData []byte         `json:"encrypted_data"`
@@ -42,15 +43,18 @@ type IrontaskSession struct {
 }
 
 type IrontaskTask struct {
-	ID            uuid.UUID     `json:"id"`
-	UserID        uuid.UUID     `json:"user_id"`
-	ClientID      string        `json:"client_id"`
-	ProjectID     string        `json:"project_id"`
-	EncryptedData []byte        `json:"encrypted_data"`
-	SyncVersion   sql.NullInt64 `json:"sync_version"`
-	Deleted       sql.NullBool  `json:"deleted"`
-	CreatedAt     sql.NullTime  `json:"created_at"`
-	UpdatedAt     sql.NullTime  `json:"updated_at"`
+	ID               uuid.UUID      `json:"id"`
+	UserID           uuid.UUID      `json:"user_id"`
+	ClientID         string         `json:"client_id"`
+	ProjectID        string         `json:"project_id"`
+	EncryptedContent []byte         `json:"encrypted_content"`
+	Status           sql.NullString `json:"status"`
+	Priority         sql.NullInt32  `json:"priority"`
+	DueDate          sql.NullString `json:"due_date"`
+	SyncVersion      sql.NullInt64  `json:"sync_version"`
+	Deleted          sql.NullBool   `json:"deleted"`
+	CreatedAt        sql.NullTime   `json:"created_at"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
 }
 
 type IrontaskUser struct {

@@ -66,7 +66,8 @@ func runProjectNew(cmd *cobra.Command, args []string) error {
 	}()
 
 	name := args[0]
-	id := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+	slug := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+	id := slug
 
 	// Check if ID already exists, if so use UUID
 	if existing, _ := dbConn.GetProject(context.Background(), id); existing.ID != "" {
@@ -76,16 +77,17 @@ func runProjectNew(cmd *cobra.Command, args []string) error {
 	now := time.Now().Format(time.RFC3339)
 	if err := dbConn.CreateProject(context.Background(), database.CreateProjectParams{
 		ID:          id,
+		Slug:        slug,
 		Name:        name,
 		Color:       sql.NullString{String: projectColor, Valid: true},
 		CreatedAt:   now,
 		UpdatedAt:   now,
-		SyncVersion: sql.NullInt64{Int64: 0, Valid: true},
+		SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("failed to create project: %w", err)
 	}
 
-	fmt.Printf("[OK] Created project: %s (id: %s)\n", name, id)
+	fmt.Printf("[OK] Created project: %s (id: %s, slug: %s)\n", name, id, slug)
 	return nil
 }
 

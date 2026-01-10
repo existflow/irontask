@@ -17,13 +17,19 @@ import (
 
 // SyncItem represents an item to sync
 type SyncItem struct {
-	ID            string `json:"id"`
-	ClientID      string `json:"client_id"`
-	Type          string `json:"type"` // "project" or "task"
-	ProjectID     string `json:"project_id,omitempty"`
-	EncryptedData string `json:"encrypted_data"`
-	SyncVersion   int64  `json:"sync_version"`
-	Deleted       bool   `json:"deleted"`
+	ID               string `json:"id"`
+	ClientID         string `json:"client_id"`
+	Type             string `json:"type"` // "project" or "task"
+	Slug             string `json:"slug,omitempty"`
+	Name             string `json:"name,omitempty"`
+	ProjectID        string `json:"project_id,omitempty"`
+	EncryptedData    string `json:"encrypted_data,omitempty"`    // For projects (legacy)
+	EncryptedContent string `json:"encrypted_content,omitempty"` // For tasks (content only)
+	Status           string `json:"status,omitempty"`
+	Priority         int    `json:"priority,omitempty"`
+	DueDate          string `json:"due_date,omitempty"`
+	SyncVersion      int64  `json:"sync_version"`
+	Deleted          bool   `json:"deleted"`
 }
 
 // SyncPullResponse is the response from pull
@@ -117,15 +123,13 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	var items []SyncItem
 
-	// Get projects that need syncing (local sync_version > last pushed version)
-	// For simplicity, we sync all projects/tasks but could optimize with version tracking
+	// Get projects that need syncing
 	projects, _ := dbConn.GetProjectsToSync(context.Background(), sql.NullInt64{Int64: 0, Valid: true})
 	for _, p := range projects {
 		color := ""
 		if p.Color.Valid {
 			color = p.Color.String
 		}
-		// Simple encoding - in production use encryption
 		data, _ := json.Marshal(map[string]interface{}{
 			"name":  p.Name,
 			"color": color,
@@ -134,6 +138,8 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 		items = append(items, SyncItem{
 			ClientID:      p.ID,
 			Type:          "project",
+			Slug:          p.Slug,
+			Name:          p.Name,
 			EncryptedData: base64.StdEncoding.EncodeToString(data),
 			SyncVersion:   p.SyncVersion.Int64,
 			Deleted:       p.DeletedAt.Valid,
@@ -147,20 +153,26 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 		if t.DueDate.Valid {
 			dueDate = t.DueDate.String
 		}
-		data, _ := json.Marshal(map[string]interface{}{
-			"content":  t.Content,
-			"priority": t.Priority,
-			"done":     t.Done,
-			"due":      dueDate,
+		status := "process"
+		if t.Status.Valid {
+			status = t.Status.String
+		}
+
+		// Only encrypt content
+		contentData, _ := json.Marshal(map[string]interface{}{
+			"content": t.Content,
 		})
 
 		items = append(items, SyncItem{
-			ClientID:      t.ID,
-			Type:          "task",
-			ProjectID:     t.ProjectID,
-			EncryptedData: base64.StdEncoding.EncodeToString(data),
-			SyncVersion:   t.SyncVersion.Int64,
-			Deleted:       t.DeletedAt.Valid,
+			ClientID:         t.ID,
+			Type:             "task",
+			ProjectID:        t.ProjectID,
+			EncryptedContent: base64.StdEncoding.EncodeToString(contentData),
+			Status:           status,
+			Priority:         t.Priority,
+			DueDate:          dueDate,
+			SyncVersion:      t.SyncVersion.Int64,
+			Deleted:          t.DeletedAt.Valid,
 		})
 	}
 
@@ -222,18 +234,30 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 	// Apply remote changes
 	ctx := context.Background()
 	for _, item := range result.Items {
-		data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
-		if err != nil {
-			continue
-		}
-
 		switch item.Type {
 		case "project":
-			var p struct {
-				Name  string `json:"name"`
-				Color string `json:"color"`
+			// Use name directly from item, encrypted_data contains legacy color info
+			name := item.Name
+			color := "#4ECDC4"
+			slug := item.Slug
+			if slug == "" {
+				slug = item.ClientID // Fallback for old data
 			}
-			_ = json.Unmarshal(data, &p)
+			if name == "" {
+				// Fallback: try to parse from encrypted data
+				data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
+				if err == nil {
+					var p struct {
+						Name  string `json:"name"`
+						Color string `json:"color"`
+					}
+					_ = json.Unmarshal(data, &p)
+					name = p.Name
+					if p.Color != "" {
+						color = p.Color
+					}
+				}
+			}
 
 			// Upsert project
 			_, err := dbConn.GetProject(ctx, item.ClientID)
@@ -241,20 +265,32 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				// Not found, create
 				_ = dbConn.CreateProject(ctx, database.CreateProjectParams{
 					ID:        item.ClientID,
-					Name:      p.Name,
-					Color:     sql.NullString{String: p.Color, Valid: true},
+					Slug:      slug,
+					Name:      name,
+					Color:     sql.NullString{String: color, Valid: true},
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
 			}
 
 		case "task":
-			var t struct {
-				Content  string `json:"content"`
-				Priority int    `json:"priority"`
-				Done     bool   `json:"done"`
+			// Decrypt content
+			content := ""
+			if item.EncryptedContent != "" {
+				data, err := base64.StdEncoding.DecodeString(item.EncryptedContent)
+				if err == nil {
+					var c struct {
+						Content string `json:"content"`
+					}
+					_ = json.Unmarshal(data, &c)
+					content = c.Content
+				}
 			}
-			_ = json.Unmarshal(data, &t)
+
+			status := item.Status
+			if status == "" {
+				status = "process"
+			}
 
 			// Upsert task
 			tExisting, err := dbConn.GetTask(ctx, item.ClientID)
@@ -263,9 +299,10 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				_ = dbConn.CreateTask(ctx, database.CreateTaskParams{
 					ID:        item.ClientID,
 					ProjectID: item.ProjectID,
-					Content:   t.Content,
-					Priority:  t.Priority,
-					Done:      t.Done,
+					Content:   content,
+					Status:    sql.NullString{String: status, Valid: true},
+					Priority:  item.Priority,
+					DueDate:   sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
@@ -274,9 +311,10 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				_ = dbConn.UpdateTask(ctx, database.UpdateTaskParams{
 					ID:        tExisting.ID,
 					ProjectID: item.ProjectID,
-					Content:   t.Content,
-					Priority:  t.Priority,
-					Done:      t.Done,
+					Content:   content,
+					Status:    sql.NullString{String: status, Valid: true},
+					Priority:  item.Priority,
+					DueDate:   sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
 			}

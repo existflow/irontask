@@ -30,7 +30,7 @@ func (q *Queries) ClearTasks(ctx context.Context) error {
 
 const countTasks = `-- name: CountTasks :one
 SELECT 
-    COUNT(*) FILTER (WHERE done = 0),
+    COUNT(*) FILTER (WHERE status = 'process'),
     COUNT(*)
 FROM tasks 
 WHERE project_id = ? AND deleted_at IS NULL
@@ -49,12 +49,13 @@ func (q *Queries) CountTasks(ctx context.Context, projectID string) (CountTasksR
 }
 
 const createProject = `-- name: CreateProject :exec
-INSERT INTO projects (id, name, color, archived, created_at, updated_at, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO projects (id, slug, name, color, archived, created_at, updated_at, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateProjectParams struct {
 	ID          string         `json:"id"`
+	Slug        string         `json:"slug"`
 	Name        string         `json:"name"`
 	Color       sql.NullString `json:"color"`
 	Archived    bool           `json:"archived"`
@@ -66,6 +67,7 @@ type CreateProjectParams struct {
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) error {
 	_, err := q.db.ExecContext(ctx, createProject,
 		arg.ID,
+		arg.Slug,
 		arg.Name,
 		arg.Color,
 		arg.Archived,
@@ -77,7 +79,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) er
 }
 
 const createTask = `-- name: CreateTask :exec
-INSERT INTO tasks (id, project_id, content, done, priority, due_date, tags, created_at, updated_at, sync_version)
+INSERT INTO tasks (id, project_id, content, status, priority, due_date, tags, created_at, updated_at, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
@@ -85,7 +87,7 @@ type CreateTaskParams struct {
 	ID          string         `json:"id"`
 	ProjectID   string         `json:"project_id"`
 	Content     string         `json:"content"`
-	Done        bool           `json:"done"`
+	Status      sql.NullString `json:"status"`
 	Priority    int            `json:"priority"`
 	DueDate     sql.NullString `json:"due_date"`
 	Tags        sql.NullString `json:"tags"`
@@ -99,7 +101,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 		arg.ID,
 		arg.ProjectID,
 		arg.Content,
-		arg.Done,
+		arg.Status,
 		arg.Priority,
 		arg.DueDate,
 		arg.Tags,
@@ -145,7 +147,7 @@ func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
+SELECT id, slug, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
 WHERE id = ? AND deleted_at IS NULL LIMIT 1
 `
 
@@ -154,6 +156,7 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 	var i Project
 	err := row.Scan(
 		&i.ID,
+		&i.Slug,
 		&i.Name,
 		&i.Color,
 		&i.Archived,
@@ -166,7 +169,7 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 }
 
 const getProjectsToSync = `-- name: GetProjectsToSync :many
-SELECT id, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
+SELECT id, slug, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
 WHERE sync_version > ?
 ORDER BY updated_at
 `
@@ -182,6 +185,7 @@ func (q *Queries) GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt
 		var i Project
 		if err := rows.Scan(
 			&i.ID,
+			&i.Slug,
 			&i.Name,
 			&i.Color,
 			&i.Archived,
@@ -204,7 +208,7 @@ func (q *Queries) GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
+SELECT id, project_id, content, status, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
 WHERE id = ? AND deleted_at IS NULL LIMIT 1
 `
 
@@ -215,7 +219,7 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 		&i.ID,
 		&i.ProjectID,
 		&i.Content,
-		&i.Done,
+		&i.Status,
 		&i.Priority,
 		&i.DueDate,
 		&i.Tags,
@@ -228,7 +232,7 @@ func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
 }
 
 const getTaskPartial = `-- name: GetTaskPartial :one
-SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks 
+SELECT id, project_id, content, status, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks 
 WHERE id LIKE ? || '%' AND deleted_at IS NULL LIMIT 1
 `
 
@@ -239,7 +243,7 @@ func (q *Queries) GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (
 		&i.ID,
 		&i.ProjectID,
 		&i.Content,
-		&i.Done,
+		&i.Status,
 		&i.Priority,
 		&i.DueDate,
 		&i.Tags,
@@ -252,7 +256,7 @@ func (q *Queries) GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (
 }
 
 const getTasksToSync = `-- name: GetTasksToSync :many
-SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
+SELECT id, project_id, content, status, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
 WHERE sync_version > ?
 ORDER BY updated_at
 `
@@ -270,7 +274,7 @@ func (q *Queries) GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64)
 			&i.ID,
 			&i.ProjectID,
 			&i.Content,
-			&i.Done,
+			&i.Status,
 			&i.Priority,
 			&i.DueDate,
 			&i.Tags,
@@ -293,7 +297,7 @@ func (q *Queries) GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64)
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
+SELECT id, slug, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
 WHERE deleted_at IS NULL
 ORDER BY name
 `
@@ -309,6 +313,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 		var i Project
 		if err := rows.Scan(
 			&i.ID,
+			&i.Slug,
 			&i.Name,
 			&i.Color,
 			&i.Archived,
@@ -331,20 +336,20 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
+SELECT id, project_id, content, status, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
 WHERE deleted_at IS NULL
   AND (?1 IS NULL OR project_id = ?1)
-  AND (?2 OR done = 0)
+  AND (?2 OR status != 'done')
 ORDER BY priority ASC, due_date ASC NULLS LAST, created_at DESC
 `
 
 type ListTasksParams struct {
-	ProjectID   interface{} `json:"project_id"`
-	IncludeDone interface{} `json:"include_done"`
+	ProjectID interface{} `json:"project_id"`
+	ShowAll   interface{} `json:"show_all"`
 }
 
 func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listTasks, arg.ProjectID, arg.IncludeDone)
+	rows, err := q.db.QueryContext(ctx, listTasks, arg.ProjectID, arg.ShowAll)
 	if err != nil {
 		return nil, err
 	}
@@ -356,7 +361,7 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 			&i.ID,
 			&i.ProjectID,
 			&i.Content,
-			&i.Done,
+			&i.Status,
 			&i.Priority,
 			&i.DueDate,
 			&i.Tags,
@@ -378,23 +383,6 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 	return items, nil
 }
 
-const markTaskDone = `-- name: MarkTaskDone :exec
-UPDATE tasks
-SET done = ?, updated_at = ?, sync_version = sync_version + 1
-WHERE id = ?
-`
-
-type MarkTaskDoneParams struct {
-	Done      bool   `json:"done"`
-	UpdatedAt string `json:"updated_at"`
-	ID        string `json:"id"`
-}
-
-func (q *Queries) MarkTaskDone(ctx context.Context, arg MarkTaskDoneParams) error {
-	_, err := q.db.ExecContext(ctx, markTaskDone, arg.Done, arg.UpdatedAt, arg.ID)
-	return err
-}
-
 const updateProjectSyncVersion = `-- name: UpdateProjectSyncVersion :exec
 UPDATE projects SET sync_version = ? WHERE id = ?
 `
@@ -411,14 +399,14 @@ func (q *Queries) UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjec
 
 const updateTask = `-- name: UpdateTask :exec
 UPDATE tasks
-SET project_id = ?, content = ?, done = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = sync_version + 1
+SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = sync_version + 1
 WHERE id = ?
 `
 
 type UpdateTaskParams struct {
 	ProjectID string         `json:"project_id"`
 	Content   string         `json:"content"`
-	Done      bool           `json:"done"`
+	Status    sql.NullString `json:"status"`
 	Priority  int            `json:"priority"`
 	DueDate   sql.NullString `json:"due_date"`
 	Tags      sql.NullString `json:"tags"`
@@ -430,13 +418,30 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 	_, err := q.db.ExecContext(ctx, updateTask,
 		arg.ProjectID,
 		arg.Content,
-		arg.Done,
+		arg.Status,
 		arg.Priority,
 		arg.DueDate,
 		arg.Tags,
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	return err
+}
+
+const updateTaskStatus = `-- name: UpdateTaskStatus :exec
+UPDATE tasks
+SET status = ?, updated_at = ?, sync_version = sync_version + 1
+WHERE id = ?
+`
+
+type UpdateTaskStatusParams struct {
+	Status    sql.NullString `json:"status"`
+	UpdatedAt string         `json:"updated_at"`
+	ID        string         `json:"id"`
+}
+
+func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateTaskStatus, arg.Status, arg.UpdatedAt, arg.ID)
 	return err
 }
 

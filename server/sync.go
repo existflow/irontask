@@ -13,14 +13,19 @@ import (
 
 // SyncItem represents an encrypted item for sync
 type SyncItem struct {
-	ID            string `json:"id"`
-	ClientID      string `json:"client_id"`
-	Type          string `json:"type"` // "project" or "task"
-	ProjectID     string `json:"project_id,omitempty"`
-	EncryptedData string `json:"encrypted_data"` // Base64 encoded
-	SyncVersion   int64  `json:"sync_version"`
-	Deleted       bool   `json:"deleted"`
-	UpdatedAt     string `json:"updated_at"`
+	ID               string `json:"id"`
+	ClientID         string `json:"client_id"`
+	Type             string `json:"type"` // "project" or "task"
+	Slug             string `json:"slug,omitempty"`
+	Name             string `json:"name,omitempty"`
+	ProjectID        string `json:"project_id,omitempty"`
+	EncryptedData    string `json:"encrypted_data,omitempty"`    // For projects
+	EncryptedContent string `json:"encrypted_content,omitempty"` // For tasks (content only)
+	Status           string `json:"status,omitempty"`
+	Priority         int32  `json:"priority,omitempty"`
+	DueDate          string `json:"due_date,omitempty"`
+	SyncVersion      int64  `json:"sync_version"`
+	Deleted          bool   `json:"deleted"`
 }
 
 // SyncPullResponse is the response for pull requests
@@ -70,17 +75,11 @@ func (s *Server) handleSyncPull(c echo.Context) error {
 			ID:            p.ClientID,
 			ClientID:      p.ClientID,
 			Type:          p.Type,
+			Slug:          p.Slug,
+			Name:          p.Name,
 			EncryptedData: base64.StdEncoding.EncodeToString(p.EncryptedData),
 			SyncVersion:   p.SyncVersion.Int64,
 			Deleted:       p.Deleted.Bool,
-			// UpdatedAt: // not in generated struct unless I selected it. Queries had: client_id, 'project', sync_version, encrypted_data, deleted. Missed updated_at.
-			// Checking queries.sql: SELECT client_id, 'project' as type, sync_version, encrypted_data, deleted FROM projects ...
-			// I need to update queries.sql to return updated_at if client needs it. Client sync logic usually doesn't explicitly need updated_at for conflict resolution if sync_version is used, but SyncItem struct has it.
-			// Current implementation returns it.
-			// I should probably add updated_at to queries if needed.
-			// Let's assume for now empty string or do a quick fix to queries.sql later if important.
-			// Actually `SyncItem` struct has `UpdatedAt`. Previous implementation returned it.
-			// I'll leave it empty for now or best effort.
 		})
 	}
 
@@ -95,21 +94,30 @@ func (s *Server) handleSyncPull(c echo.Context) error {
 	}
 
 	for _, t := range tasks {
+		dueDate := ""
+		if t.DueDate.Valid {
+			dueDate = t.DueDate.String
+		}
+		status := "process"
+		if t.Status.Valid {
+			status = t.Status.String
+		}
+
 		items = append(items, SyncItem{
-			ID:            t.ClientID,
-			ClientID:      t.ClientID,
-			ProjectID:     t.ProjectID,
-			Type:          t.Type,
-			EncryptedData: base64.StdEncoding.EncodeToString(t.EncryptedData),
-			SyncVersion:   t.SyncVersion.Int64,
-			Deleted:       t.Deleted.Bool,
+			ID:               t.ClientID,
+			ClientID:         t.ClientID,
+			ProjectID:        t.ProjectID,
+			Type:             t.Type,
+			EncryptedContent: base64.StdEncoding.EncodeToString(t.EncryptedContent),
+			Status:           status,
+			Priority:         t.Priority.Int32,
+			DueDate:          dueDate,
+			SyncVersion:      t.SyncVersion.Int64,
+			Deleted:          t.Deleted.Bool,
 		})
 	}
 
-	// Calculate max version in Go or use separate query?
-	// Existing code used a UNION ALL query.
-	// I didn't generate that specific max version query.
-	// I can just find max from items list.
+	// Calculate max version
 	maxVersion := lastVersion
 	for _, item := range items {
 		if item.SyncVersion > maxVersion {
@@ -140,17 +148,28 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 	var updated []SyncItem
 
 	for _, item := range req.Items {
-		data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
-		if err != nil {
-			c.Logger().Error("base64 decode error:", err)
-			continue
-		}
-
 		switch item.Type {
 		case "project":
+			data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
+			if err != nil {
+				c.Logger().Error("base64 decode error:", err)
+				continue
+			}
+
+			slug := item.Slug
+			if slug == "" {
+				slug = item.ClientID // Fallback
+			}
+			name := item.Name
+			if name == "" {
+				name = slug
+			}
+
 			version, err := s.queries.UpsertProject(c.Request().Context(), database.UpsertProjectParams{
 				UserID:        userUUID,
 				ClientID:      item.ClientID,
+				Slug:          slug,
+				Name:          name,
 				Color:         sql.NullString{String: "", Valid: true},
 				EncryptedData: data,
 				Deleted:       sql.NullBool{Bool: item.Deleted, Valid: true},
@@ -163,12 +182,26 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 			}
 
 		case "task":
+			contentData, err := base64.StdEncoding.DecodeString(item.EncryptedContent)
+			if err != nil {
+				c.Logger().Error("base64 decode error:", err)
+				continue
+			}
+
+			status := item.Status
+			if status == "" {
+				status = "process"
+			}
+
 			version, err := s.queries.UpsertTask(c.Request().Context(), database.UpsertTaskParams{
-				UserID:        userUUID,
-				ClientID:      item.ClientID,
-				ProjectID:     item.ProjectID,
-				EncryptedData: data,
-				Deleted:       sql.NullBool{Bool: item.Deleted, Valid: true},
+				UserID:           userUUID,
+				ClientID:         item.ClientID,
+				ProjectID:        item.ProjectID,
+				EncryptedContent: contentData,
+				Status:           sql.NullString{String: status, Valid: true},
+				Priority:         sql.NullInt32{Int32: item.Priority, Valid: true},
+				DueDate:          sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
+				Deleted:          sql.NullBool{Bool: item.Deleted, Valid: true},
 			})
 			if err == nil {
 				item.SyncVersion = version.Int64
@@ -192,7 +225,6 @@ func (s *Server) handleClear(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user id"})
 	}
 
-	// Order matters if there are FKs, but here they are independent primarily
 	if err := s.queries.ClearTasks(c.Request().Context(), userID); err != nil {
 		c.Logger().Error("clear tasks error:", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to clear tasks"})

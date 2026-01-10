@@ -8,7 +8,6 @@ func (db *DB) migrate() error {
 		migrationCreateProjects,
 		migrationCreateTasks,
 		migrationCreateSyncState,
-		migrationInsertInbox,
 	}
 
 	for i, m := range migrations {
@@ -23,6 +22,7 @@ func (db *DB) migrate() error {
 const migrationCreateProjects = `
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
+    slug TEXT NOT NULL,
     name TEXT NOT NULL,
     color TEXT DEFAULT '#4ECDC4',
     archived INTEGER DEFAULT 0,
@@ -31,14 +31,16 @@ CREATE TABLE IF NOT EXISTS projects (
     deleted_at TEXT,
     sync_version INTEGER DEFAULT 0
 );
+
+CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
 `
 
 const migrationCreateTasks = `
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL DEFAULT 'inbox',
+    project_id TEXT NOT NULL,
     content TEXT NOT NULL,
-    done INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'process',
     priority INTEGER DEFAULT 4,
     due_date TEXT,
     tags TEXT,
@@ -50,7 +52,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 `
 
 const migrationCreateSyncState = `
@@ -58,9 +60,4 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
     value TEXT
 );
-`
-
-const migrationInsertInbox = `
-INSERT OR IGNORE INTO projects (id, name, color, created_at, updated_at)
-VALUES ('inbox', 'Inbox', '#6C757D', datetime('now'), datetime('now'));
 `

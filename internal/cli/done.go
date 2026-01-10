@@ -57,19 +57,22 @@ func runDone(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task not found: %s", taskID)
 	}
 
-	done := !doneUndo
-	if err := dbConn.MarkTaskDone(ctx, database.MarkTaskDoneParams{
+	newStatus := "done"
+	if doneUndo {
+		newStatus = "process"
+	}
+	if err := dbConn.UpdateTaskStatus(ctx, database.UpdateTaskStatusParams{
 		ID:        task.ID,
-		Done:      done,
+		Status:    sql.NullString{String: newStatus, Valid: true},
 		UpdatedAt: time.Now().Format(time.RFC3339),
 	}); err != nil {
 		return fmt.Errorf("failed to update task: %w", err)
 	}
 
-	if done {
+	if newStatus == "done" {
 		fmt.Printf("[OK] Completed: \"%s\"\n", task.Content)
 	} else {
-		fmt.Printf("○ Reopened: \"%s\"\n", task.Content)
+		fmt.Printf("[OK] Reopened: \"%s\"\n", task.Content)
 	}
 
 	// Sync after change if flag is set or auto-sync is due

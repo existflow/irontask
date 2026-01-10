@@ -10,6 +10,7 @@ import (
 
 type Project struct {
 	ID          string         `json:"id"`
+	Slug        string         `json:"slug"`
 	Name        string         `json:"name"`
 	Color       sql.NullString `json:"color"`
 	Archived    bool           `json:"archived"`
@@ -28,7 +29,7 @@ type Task struct {
 	ID          string         `json:"id"`
 	ProjectID   string         `json:"project_id"`
 	Content     string         `json:"content"`
-	Done        bool           `json:"done"`
+	Status      sql.NullString `json:"status"`
 	Priority    int            `json:"priority"`
 	DueDate     sql.NullString `json:"due_date"`
 	Tags        sql.NullString `json:"tags"`

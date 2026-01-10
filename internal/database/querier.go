@@ -24,9 +24,9 @@ type Querier interface {
 	GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Task, error)
 	ListProjects(ctx context.Context) ([]Project, error)
 	ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error)
-	MarkTaskDone(ctx context.Context, arg MarkTaskDoneParams) error
 	UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjectSyncVersionParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
+	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error
 	UpdateTaskSyncVersion(ctx context.Context, arg UpdateTaskSyncVersionParams) error
 }
 

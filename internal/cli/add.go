@@ -76,11 +76,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		ID:          uuid.New().String(),
 		ProjectID:   projectID,
 		Content:     content,
-		Done:        false,
+		Status:      sql.NullString{String: "process", Valid: true},
 		Priority:    addPriority,
 		CreatedAt:   now,
 		UpdatedAt:   now,
-		SyncVersion: sql.NullInt64{Int64: 0, Valid: true},
+		SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create task: %w", err)

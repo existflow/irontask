@@ -57,7 +57,7 @@ func NewClient() (*Client, error) {
 func (c *Client) loadConfig() {
 	defaultServer := os.Getenv("DEFAULT_SERVER_URL")
 	if defaultServer == "" {
-		defaultServer = "https://irontask-server-dev.onrender.com"
+		defaultServer = "localhost:8080"
 	}
 
 	data, err := os.ReadFile(c.configPath)

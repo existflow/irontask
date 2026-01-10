@@ -44,37 +44,42 @@ WHERE token = $1;
 UPDATE irontask.magic_links SET used = TRUE WHERE token = $1;
 
 -- name: UpsertProject :one
-INSERT INTO irontask.projects (user_id, client_id, name, color, encrypted_data, sync_version, deleted, updated_at)
-VALUES ($1, $2, '', $3, $4, 
+INSERT INTO irontask.projects (user_id, client_id, slug, name, color, encrypted_data, sync_version, deleted, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, 
     (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1), 
-    $5, NOW())
+    $7, NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
-SET encrypted_data = EXCLUDED.encrypted_data,
+SET slug = EXCLUDED.slug,
+    name = EXCLUDED.name,
+    encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
     sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1),
     updated_at = NOW()
 RETURNING sync_version;
 
 -- name: GetProjectsChanged :many
-SELECT client_id, 'project' as type, sync_version, encrypted_data, deleted
+SELECT client_id, slug, name, 'project' as type, sync_version, encrypted_data, deleted
 FROM irontask.projects
 WHERE user_id = $1 AND sync_version > $2;
 
 -- name: UpsertTask :one
-INSERT INTO irontask.tasks (user_id, client_id, project_id, encrypted_data, deleted, sync_version, updated_at)
-VALUES ($1, $2, $3, $4, $5, 
+INSERT INTO irontask.tasks (user_id, client_id, project_id, encrypted_content, status, priority, due_date, deleted, sync_version, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 
     (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
     NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET project_id = EXCLUDED.project_id,
-    encrypted_data = EXCLUDED.encrypted_data,
+    encrypted_content = EXCLUDED.encrypted_content,
+    status = EXCLUDED.status,
+    priority = EXCLUDED.priority,
+    due_date = EXCLUDED.due_date,
     deleted = EXCLUDED.deleted,
     sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
     updated_at = NOW()
 RETURNING sync_version;
 
 -- name: GetTasksChanged :many
-SELECT client_id, project_id, 'task' as type, sync_version, encrypted_data, deleted
+SELECT client_id, project_id, 'task' as type, sync_version, encrypted_content, status, priority, due_date, deleted
 FROM irontask.tasks
 WHERE user_id = $1 AND sync_version > $2;
 
