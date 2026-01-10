@@ -7,6 +7,9 @@ BINARY_NAME="irontask"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.irontask"
 
+# Default: include pre-releases
+USE_PRERELEASE=true
+
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 if [ "$OS" != "linux" ] && [ "$OS" != "darwin" ]; then
@@ -30,24 +33,35 @@ GITHUB_URL="https://github.com/$REPO"
 # Documentation
 usage() {
     echo "IronTask CLI Management Script"
-    echo "Usage: $0 [command]"
+    echo "Usage: $0 [command] [options]"
     echo ""
     echo "Commands:"
     echo "  --install    Install the latest release of $BINARY_NAME"
     echo "  --update     Update $BINARY_NAME to the latest release"
     echo "  --remove     Remove $BINARY_NAME and its configuration"
     echo "  --help       Show this help message"
+    echo ""
+    echo "Options:"
+    echo "  --stable     Install only stable releases (no pre-releases)"
+    echo "  --pre        Install pre-releases (default)"
 }
 
 # Install or Update logic
 install_cli() {
-    echo "🔍 Checking for the latest release on GitHub..."
+    echo "🔍 Checking for releases on GitHub..."
     
-    # Get the most recent release (including pre-releases) from GitHub API
-    LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ "$USE_PRERELEASE" = true ]; then
+        echo "   (Including pre-releases)"
+        # Get the most recent release (including pre-releases)
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases" | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+    else
+        echo "   (Stable releases only)"
+        # Get the latest stable release only
+        LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    fi
     
     if [ -z "$LATEST_RELEASE" ]; then
-        echo "❌ Error: Could not find any releases. Please check if there are any releases at $GITHUB_URL/releases"
+        echo "❌ Error: Could not find any releases. Please check: $GITHUB_URL/releases"
         exit 1
     fi
 
@@ -57,7 +71,11 @@ install_cli() {
     echo "📥 Downloading ${BINARY_NAME} ${LATEST_RELEASE} for ${OS}/${ARCH}..."
     
     tmp_dir=$(mktemp -d)
-    curl -sSL -o "${tmp_dir}/${BINARY_NAME}" "${DOWNLOAD_URL}"
+    if ! curl -sSL -f -o "${tmp_dir}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
+        echo "❌ Error: Failed to download. Asset may not exist for your platform."
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
     
     chmod +x "${tmp_dir}/${BINARY_NAME}"
     
@@ -90,25 +108,46 @@ remove_cli() {
     echo "✨ IronTask has been completely removed."
 }
 
-# Main logic
-if [ $# -eq 0 ]; then
-    usage
-    exit 0
-fi
+# Parse arguments
+COMMAND=""
+for arg in "$@"; do
+    case "$arg" in
+        --install|--update)
+            COMMAND="install"
+            ;;
+        --remove)
+            COMMAND="remove"
+            ;;
+        --help|-h)
+            COMMAND="help"
+            ;;
+        --stable)
+            USE_PRERELEASE=false
+            ;;
+        --pre)
+            USE_PRERELEASE=true
+            ;;
+        *)
+            echo "❌ Error: Unknown option '$arg'"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
-case "$1" in
-    --install|--update)
+# Execute command
+case "$COMMAND" in
+    install)
         install_cli
         ;;
-    --remove)
+    remove)
         remove_cli
         ;;
-    --help|-h)
+    help)
         usage
         ;;
-    *)
-        echo "❌ Error: Unknown command '$1'"
+    "")
         usage
-        exit 1
+        exit 0
         ;;
 esac

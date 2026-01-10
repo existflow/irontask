@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS irontask;
 -- Set search path for this session
 SET search_path TO irontask, public;
 
-CREATE TABLE irontask.users (
+CREATE TABLE IF NOT EXISTS irontask.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE irontask.users (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE irontask.sessions (
+CREATE TABLE IF NOT EXISTS irontask.sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES irontask.users(id),
     token VARCHAR(64) UNIQUE NOT NULL,
@@ -21,9 +21,9 @@ CREATE TABLE irontask.sessions (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_sessions_token ON irontask.sessions(token);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON irontask.sessions(token);
 
-CREATE TABLE irontask.magic_links (
+CREATE TABLE IF NOT EXISTS irontask.magic_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) NOT NULL,
     token VARCHAR(64) UNIQUE NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE irontask.magic_links (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE irontask.projects (
+CREATE TABLE IF NOT EXISTS irontask.projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES irontask.users(id),
     client_id TEXT NOT NULL,
@@ -46,10 +46,10 @@ CREATE TABLE irontask.projects (
     UNIQUE(user_id, client_id)
 );
 
-CREATE INDEX idx_projects_user ON irontask.projects(user_id);
-CREATE INDEX idx_projects_sync ON irontask.projects(user_id, sync_version);
+CREATE INDEX IF NOT EXISTS idx_projects_user ON irontask.projects(user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_sync ON irontask.projects(user_id, sync_version);
 
-CREATE TABLE irontask.tasks (
+CREATE TABLE IF NOT EXISTS irontask.tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES irontask.users(id),
     client_id TEXT NOT NULL,
@@ -62,5 +62,5 @@ CREATE TABLE irontask.tasks (
     UNIQUE(user_id, client_id)
 );
 
-CREATE INDEX idx_tasks_user ON irontask.tasks(user_id);
-CREATE INDEX idx_tasks_sync ON irontask.tasks(user_id, sync_version);
+CREATE INDEX IF NOT EXISTS idx_tasks_user ON irontask.tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_sync ON irontask.tasks(user_id, sync_version);
