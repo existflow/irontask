@@ -21,6 +21,7 @@ type Config struct {
 	Token         string `json:"token"`
 	UserID        string `json:"user_id"`
 	LastSync      int64  `json:"last_sync"`
+	LastSyncTime  int64  `json:"last_sync_time"` // Unix timestamp of last sync
 	HasSyncedOnce bool   `json:"has_synced_once"`
 	EncryptionKey string `json:"encryption_key,omitempty"` // Base64 encoded
 	Salt          string `json:"salt,omitempty"`           // Base64 encoded salt for key derivation
@@ -109,6 +110,21 @@ func (c *Client) CanAutoSync() bool {
 // SetSyncedOnce marks that the user has completed a full sync
 func (c *Client) SetSyncedOnce() error {
 	c.config.HasSyncedOnce = true
+	return c.saveConfig()
+}
+
+// ShouldAutoSync returns true if auto-sync is due (every 12 hours)
+func (c *Client) ShouldAutoSync() bool {
+	if !c.IsLoggedIn() {
+		return false
+	}
+	twelveHours := int64(12 * 60 * 60)
+	return time.Now().Unix()-c.config.LastSyncTime > twelveHours
+}
+
+// UpdateSyncTime updates the last sync timestamp
+func (c *Client) UpdateSyncTime() error {
+	c.config.LastSyncTime = time.Now().Unix()
 	return c.saveConfig()
 }
 

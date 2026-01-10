@@ -129,6 +129,12 @@ func NewModel(database *db.DB) Model {
 	if err == nil && sClient.IsLoggedIn() {
 		m.syncClient = sClient
 		m.autoSync = sync.NewAutoSync(sClient, database)
+
+		// Set callback to reload data when remote changes are pulled
+		m.autoSync.SetOnPull(func() {
+			m.loadData()
+		})
+
 		// Trigger initial sync
 		m.autoSync.TriggerSync()
 	}

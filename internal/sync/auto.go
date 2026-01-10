@@ -12,18 +12,69 @@ type AutoSync struct {
 	client       *Client
 	db           *db.DB
 	debounceTime time.Duration
+	pollInterval time.Duration
 	pending      bool
 	mu           sync.Mutex
 	stopCh       chan struct{}
+	onPull       func() // Callback when remote changes are pulled
 }
 
 // NewAutoSync creates a new auto-sync manager
 func NewAutoSync(client *Client, database *db.DB) *AutoSync {
-	return &AutoSync{
+	a := &AutoSync{
 		client:       client,
 		db:           database,
-		debounceTime: 5 * time.Second, // Wait 5s after last change before syncing
+		debounceTime: 5 * time.Second,  // Wait 5s after last change before syncing
+		pollInterval: 30 * time.Second, // Poll for remote changes every 30s
 		stopCh:       make(chan struct{}),
+	}
+
+	// Start background polling for remote changes
+	go a.pollLoop()
+
+	return a
+}
+
+// SetOnPull sets a callback function to be called when remote changes are pulled
+func (a *AutoSync) SetOnPull(callback func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.onPull = callback
+}
+
+// pollLoop periodically checks for remote changes
+func (a *AutoSync) pollLoop() {
+	ticker := time.NewTicker(a.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if a.client.CanAutoSync() {
+				a.pullRemoteChanges()
+			}
+		case <-a.stopCh:
+			return
+		}
+	}
+}
+
+// pullRemoteChanges pulls changes from the server
+func (a *AutoSync) pullRemoteChanges() {
+	result, err := a.client.Sync(a.db, SyncModeMerge)
+	if err != nil {
+		return
+	}
+
+	// If we pulled changes, notify the callback
+	if result.Pulled > 0 {
+		a.mu.Lock()
+		callback := a.onPull
+		a.mu.Unlock()
+
+		if callback != nil {
+			callback()
+		}
 	}
 }
 
@@ -65,7 +116,6 @@ func (a *AutoSync) performSync() {
 	}
 
 	// keeping silent for TUI
-
 }
 
 // Stop stops the auto-sync manager

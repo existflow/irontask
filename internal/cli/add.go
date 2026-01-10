@@ -30,12 +30,14 @@ var (
 	addProject  string
 	addPriority int
 	addDue      string
+	addSync     bool
 )
 
 func init() {
 	addCmd.Flags().StringVarP(&addProject, "project", "P", "inbox", "Project to add task to")
 	addCmd.Flags().IntVarP(&addPriority, "priority", "p", 4, "Priority (1=urgent, 4=low)")
 	addCmd.Flags().StringVarP(&addDue, "due", "d", "", "Due date (e.g., 'tomorrow', '2024-01-15')")
+	addCmd.Flags().BoolVarP(&addSync, "sync", "s", false, "Sync with server after adding")
 }
 
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -92,5 +94,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("✓ Added to [%s]: \"%s\" (P%d)\n", projectName, content, addPriority)
+
+	// Sync after change if flag is set or auto-sync is due
+	MaybeSyncAfterChange(dbConn, addSync)
+
 	return nil
 }

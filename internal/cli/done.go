@@ -23,10 +23,14 @@ Examples:
 	RunE: runDone,
 }
 
-var doneUndo bool
+var (
+	doneUndo bool
+	doneSync bool
+)
 
 func init() {
 	doneCmd.Flags().BoolVar(&doneUndo, "undo", false, "Mark task as not done")
+	doneCmd.Flags().BoolVarP(&doneSync, "sync", "s", false, "Sync with server after marking done")
 }
 
 func runDone(cmd *cobra.Command, args []string) error {
@@ -67,6 +71,9 @@ func runDone(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("○ Reopened: \"%s\"\n", task.Content)
 	}
+
+	// Sync after change if flag is set or auto-sync is due
+	MaybeSyncAfterChange(dbConn, doneSync)
 
 	return nil
 }

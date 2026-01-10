@@ -29,12 +29,14 @@ var (
 	listProject     string
 	listAll         bool
 	listIncludeDone bool
+	listSync        bool
 )
 
 func init() {
 	listCmd.Flags().StringVarP(&listProject, "project", "P", "", "Filter by project")
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all projects")
 	listCmd.Flags().BoolVar(&listIncludeDone, "done", false, "Include completed tasks")
+	listCmd.Flags().BoolVarP(&listSync, "sync", "s", false, "Sync with server before listing")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -45,6 +47,9 @@ func runList(cmd *cobra.Command, args []string) error {
 	defer func() {
 		_ = dbConn.Close()
 	}()
+
+	// Sync before listing if flag is set or auto-sync is due
+	MaybeSyncCLI(dbConn, listSync)
 
 	var projectID interface{}
 	if listProject != "" {
