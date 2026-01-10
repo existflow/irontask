@@ -1,9 +1,25 @@
-name: Release
+name: Build and Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to build for"
+        required: true
+        default: "development"
+        type: choice
+        options:
+          - development
+          - production
+      version:
+        description: "Version (e.g., v1.0.0). Leave empty for dev auto-version."
+        required: false
+        type: string
+      create_release:
+        description: "Create a GitHub Release?"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -35,7 +51,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.24"
+
+      - name: Get version info
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            SHA_SHORT=$(git rev-parse --short HEAD)
+            DATE=$(date +'%Y%m%d')
+            echo "version=dev-${DATE}-${SHA_SHORT}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build CLI
         env:
@@ -47,16 +74,18 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then
             EXT=".exe"
           fi
-          go build -ldflags="-s -w" -o irontask-${{ matrix.os }}-${{ matrix.arch }}${EXT} ./cmd/irontask
+          VERSION="${{ steps.version.outputs.version }}"
+          go build -ldflags="-s -w -X main.version=${VERSION}" -o irontask-${{ matrix.os }}-${{ matrix.arch }}${EXT} ./cmd/irontask
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: irontask-${{ matrix.os }}-${{ matrix.arch }}
+          name: irontask-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.inputs.environment }}
           path: irontask-*
 
   release:
     name: Create Release
+    if: ${{ github.event.inputs.create_release == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -76,7 +105,11 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }}
           files: release/*
           generate_release_notes: true
+          draft: false
+          prerelease: ${{ github.event.inputs.environment == 'development' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
