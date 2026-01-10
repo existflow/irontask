@@ -62,3 +62,19 @@ DELETE FROM tasks;
 
 -- name: ClearProjects :exec
 DELETE FROM projects;
+
+-- name: GetProjectsToSync :many
+SELECT * FROM projects
+WHERE sync_version > ?
+ORDER BY updated_at;
+
+-- name: GetTasksToSync :many
+SELECT * FROM tasks
+WHERE sync_version > ?
+ORDER BY updated_at;
+
+-- name: UpdateProjectSyncVersion :exec
+UPDATE projects SET sync_version = ? WHERE id = ?;
+
+-- name: UpdateTaskSyncVersion :exec
+UPDATE tasks SET sync_version = ? WHERE id = ?;

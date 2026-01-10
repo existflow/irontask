@@ -165,6 +165,44 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 	return i, err
 }
 
+const getProjectsToSync = `-- name: GetProjectsToSync :many
+SELECT id, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
+WHERE sync_version > ?
+ORDER BY updated_at
+`
+
+func (q *Queries) GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Project, error) {
+	rows, err := q.db.QueryContext(ctx, getProjectsToSync, syncVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Color,
+			&i.Archived,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SyncVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getTask = `-- name: GetTask :one
 SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
 WHERE id = ? AND deleted_at IS NULL LIMIT 1
@@ -211,6 +249,47 @@ func (q *Queries) GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (
 		&i.SyncVersion,
 	)
 	return i, err
+}
+
+const getTasksToSync = `-- name: GetTasksToSync :many
+SELECT id, project_id, content, done, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
+WHERE sync_version > ?
+ORDER BY updated_at
+`
+
+func (q *Queries) GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getTasksToSync, syncVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Content,
+			&i.Done,
+			&i.Priority,
+			&i.DueDate,
+			&i.Tags,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.SyncVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProjects = `-- name: ListProjects :many
@@ -316,6 +395,20 @@ func (q *Queries) MarkTaskDone(ctx context.Context, arg MarkTaskDoneParams) erro
 	return err
 }
 
+const updateProjectSyncVersion = `-- name: UpdateProjectSyncVersion :exec
+UPDATE projects SET sync_version = ? WHERE id = ?
+`
+
+type UpdateProjectSyncVersionParams struct {
+	SyncVersion sql.NullInt64 `json:"sync_version"`
+	ID          string        `json:"id"`
+}
+
+func (q *Queries) UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjectSyncVersionParams) error {
+	_, err := q.db.ExecContext(ctx, updateProjectSyncVersion, arg.SyncVersion, arg.ID)
+	return err
+}
+
 const updateTask = `-- name: UpdateTask :exec
 UPDATE tasks
 SET project_id = ?, content = ?, done = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = sync_version + 1
@@ -344,5 +437,19 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 		arg.UpdatedAt,
 		arg.ID,
 	)
+	return err
+}
+
+const updateTaskSyncVersion = `-- name: UpdateTaskSyncVersion :exec
+UPDATE tasks SET sync_version = ? WHERE id = ?
+`
+
+type UpdateTaskSyncVersionParams struct {
+	SyncVersion sql.NullInt64 `json:"sync_version"`
+	ID          string        `json:"id"`
+}
+
+func (q *Queries) UpdateTaskSyncVersion(ctx context.Context, arg UpdateTaskSyncVersionParams) error {
+	_, err := q.db.ExecContext(ctx, updateTaskSyncVersion, arg.SyncVersion, arg.ID)
 	return err
 }

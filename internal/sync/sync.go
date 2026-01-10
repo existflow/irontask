@@ -117,8 +117,9 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	var items []SyncItem
 
-	// Get projects that need syncing (updated since last sync)
-	projects, _ := dbConn.ListProjects(context.Background())
+	// Get projects that need syncing (local sync_version > last pushed version)
+	// For simplicity, we sync all projects/tasks but could optimize with version tracking
+	projects, _ := dbConn.GetProjectsToSync(context.Background(), sql.NullInt64{Int64: 0, Valid: true})
 	for _, p := range projects {
 		color := ""
 		if p.Color.Valid {
@@ -134,14 +135,13 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 			ClientID:      p.ID,
 			Type:          "project",
 			EncryptedData: base64.StdEncoding.EncodeToString(data),
+			SyncVersion:   p.SyncVersion.Int64,
 			Deleted:       p.DeletedAt.Valid,
 		})
 	}
 
 	// Get tasks that need syncing
-	tasks, _ := dbConn.ListTasks(context.Background(), database.ListTasksParams{
-		IncludeDone: true,
-	})
+	tasks, _ := dbConn.GetTasksToSync(context.Background(), sql.NullInt64{Int64: 0, Valid: true})
 	for _, t := range tasks {
 		dueDate := ""
 		if t.DueDate.Valid {
@@ -159,6 +159,7 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 			Type:          "task",
 			ProjectID:     t.ProjectID,
 			EncryptedData: base64.StdEncoding.EncodeToString(data),
+			SyncVersion:   t.SyncVersion.Int64,
 			Deleted:       t.DeletedAt.Valid,
 		})
 	}

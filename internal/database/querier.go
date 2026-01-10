@@ -18,12 +18,16 @@ type Querier interface {
 	DeleteProject(ctx context.Context, arg DeleteProjectParams) error
 	DeleteTask(ctx context.Context, arg DeleteTaskParams) error
 	GetProject(ctx context.Context, id string) (Project, error)
+	GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Project, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (Task, error)
+	GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Task, error)
 	ListProjects(ctx context.Context) ([]Project, error)
 	ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error)
 	MarkTaskDone(ctx context.Context, arg MarkTaskDoneParams) error
+	UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjectSyncVersionParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
+	UpdateTaskSyncVersion(ctx context.Context, arg UpdateTaskSyncVersionParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -14,6 +14,7 @@ type AutoSync struct {
 	debounceTime time.Duration
 	pollInterval time.Duration
 	pending      bool
+	syncing      bool // Prevents concurrent sync operations
 	mu           sync.Mutex
 	stopCh       chan struct{}
 	onPull       func() // Callback when remote changes are pulled
@@ -24,7 +25,7 @@ func NewAutoSync(client *Client, database *db.DB) *AutoSync {
 	a := &AutoSync{
 		client:       client,
 		db:           database,
-		debounceTime: 5 * time.Second,  // Wait 5s after last change before syncing
+		debounceTime: 2 * time.Second,  // Wait 2s after last change before syncing
 		pollInterval: 30 * time.Second, // Poll for remote changes every 30s
 		stopCh:       make(chan struct{}),
 	}
@@ -51,7 +52,7 @@ func (a *AutoSync) pollLoop() {
 		select {
 		case <-ticker.C:
 			if a.client.CanAutoSync() {
-				a.pullRemoteChanges()
+				a.doSync()
 			}
 		case <-a.stopCh:
 			return
@@ -59,8 +60,22 @@ func (a *AutoSync) pollLoop() {
 	}
 }
 
-// pullRemoteChanges pulls changes from the server
-func (a *AutoSync) pullRemoteChanges() {
+// doSync performs the actual sync, with locking to prevent concurrent syncs
+func (a *AutoSync) doSync() {
+	a.mu.Lock()
+	if a.syncing {
+		a.mu.Unlock()
+		return // Already syncing, skip
+	}
+	a.syncing = true
+	a.mu.Unlock()
+
+	defer func() {
+		a.mu.Lock()
+		a.syncing = false
+		a.mu.Unlock()
+	}()
+
 	result, err := a.client.Sync(a.db, SyncModeMerge)
 	if err != nil {
 		return
@@ -99,23 +114,13 @@ func (a *AutoSync) debouncedSync() {
 
 	select {
 	case <-timer.C:
-		a.performSync()
+		a.mu.Lock()
+		a.pending = false
+		a.mu.Unlock()
+		a.doSync()
 	case <-a.stopCh:
 		return
 	}
-}
-
-func (a *AutoSync) performSync() {
-	a.mu.Lock()
-	a.pending = false
-	a.mu.Unlock()
-
-	_, err := a.client.Sync(a.db, SyncModeMerge)
-	if err != nil {
-		return
-	}
-
-	// keeping silent for TUI
 }
 
 // Stop stops the auto-sync manager
