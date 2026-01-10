@@ -13,10 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/model"
-	"github.com/tphuc/irontask/internal/sync"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/model"
+	"github.com/existflow/irontask/internal/sync"
 )
 
 // Pane represents which pane is focused
@@ -638,7 +638,7 @@ func (m Model) View() string {
 	taskList := m.renderTaskList()
 	statusBar := m.renderStatusBar()
 
-	// Combine sidebar and task list
+	// Combine sidebar and irontask list
 	mainContent := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, taskList)
 
 	// Add modal if in input mode

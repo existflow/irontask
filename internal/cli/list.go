@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/model"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/model"
 )
 
 var listCmd = &cobra.Command{
@@ -19,9 +19,9 @@ var listCmd = &cobra.Command{
 	Long: `List tasks, optionally filtered by project.
 
 Examples:
-  task list
-  task list --project work
-  task list --all`,
+  irontask list
+  irontask list --project work
+  irontask list --all`,
 	RunE: runList,
 }
 
@@ -58,7 +58,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(tasks) == 0 {
-		fmt.Println("No tasks found. Add one with: task add \"Your task\"")
+		fmt.Println("No tasks found. Add one with: irontask add \"Your task\"")
 		return nil
 	}
 

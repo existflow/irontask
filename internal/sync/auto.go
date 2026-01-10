@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/db"
 )
 
 // AutoSync manages automatic background syncing

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
 )
 
 var doneCmd = &cobra.Command{
@@ -17,8 +17,8 @@ var doneCmd = &cobra.Command{
 	Long: `Mark a task as completed.
 
 Examples:
-  task done abc123
-  task done abc123 --undo`,
+  irontask done abc123
+  irontask done abc123 --undo`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDone,
 }

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/sync"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/sync"
 )
 
 var clearCmd = &cobra.Command{

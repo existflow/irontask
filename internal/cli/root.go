@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/tui"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/tui"
 )
 
 var rootCmd = &cobra.Command{

@@ -32,10 +32,10 @@ On your computer:
 
 ```bash
 # Register with your new server
-task sync register --server https://irontask-sync.onrender.com
+irontask sync register --server https://irontask-sync.onrender.com
 
 # Or manually config
-task sync config --server https://irontask-sync.onrender.com
+irontask sync config --server https://irontask-sync.onrender.com
 ```
 
 ## Alternative: Self-Host with Docker

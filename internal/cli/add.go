@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/model"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/model"
 )
 
 var addCmd = &cobra.Command{
@@ -19,9 +19,9 @@ var addCmd = &cobra.Command{
 	Long: `Add a new task to a project.
 
 Examples:
-  task add "Buy groceries"
-  task add "Meeting with team" -p 1
-  task add "Feature work" --project work -p 2`,
+  irontask add "Buy groceries"
+  irontask add "Meeting with team" -p 1
+  irontask add "Feature work" --project work -p 2`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runAdd,
 }

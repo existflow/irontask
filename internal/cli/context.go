@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/db"
 )
 
 var contextCmd = &cobra.Command{
@@ -19,10 +19,10 @@ var contextCmd = &cobra.Command{
 When a context is set, new tasks are added to that project by default.
 
 Examples:
-  task context              # Show current context
-  task context ls           # List all projects
-  task context set work     # Set context to 'work' project
-  task context clear        # Clear context (use Inbox)`,
+  irontask context              # Show current context
+  irontask context ls           # List all projects
+  irontask context set work     # Set context to 'work' project
+  irontask context clear        # Clear context (use Inbox)`,
 	RunE: runContextShow,
 }
 
@@ -150,7 +150,7 @@ func runContextList(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s%-15s  %-20s  %d/%d\n", marker, p.ID, p.Name, counts.Count, counts.Count_2)
 	}
 	fmt.Println()
-	fmt.Println("Use 'task context set <project-id>' to switch context")
+	fmt.Println("Use 'irontask context set <project-id>' to switch context")
 
 	return nil
 }

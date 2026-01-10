@@ -169,25 +169,25 @@ Using [cobra](https://github.com/spf13/cobra) for CLI framework.
 **Project Commands:**
 | Command | Description |
 |---------|-------------|
-| `task project new "Work"` | Create a new project |
-| `task project list` | List all projects |
-| `task project delete <id>` | Delete a project |
+| `irontask project new "Work"` | Create a new project |
+| `irontask project list` | List all projects |
+| `irontask project delete <id>` | Delete a project |
 
 **Task Commands:**
 | Command | Description |
 |---------|-------------|
-| `task add "Buy groceries"` | Add to Inbox (default) |
-| `task add "Feature" --project work` | Add to specific project |
-| `task list` | List all pending tasks |
-| `task list --project work` | List tasks in project |
-| `task done <id>` | Mark task complete |
-| `task delete <id>` | Delete a task |
+| `irontask add "Buy groceries"` | Add to Inbox (default) |
+| `irontask add "Feature" --project work` | Add to specific project |
+| `irontask list` | List all pending tasks |
+| `irontask list --project work` | List tasks in project |
+| `irontask done <id>` | Mark task complete |
+| `irontask delete <id>` | Delete a task |
 | `task move <id> <project>` | Move task to project |
 
 **Other:**
 | Command | Description |
 |---------|-------------|
-| `task sync` | Manual sync |
+| `irontask sync` | Manual sync |
 | `task login` | Auth with sync server |
 | `task` (no args) | Launch TUI |
 

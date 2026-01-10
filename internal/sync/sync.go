@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
 )
 
 // SyncItem represents an item to sync

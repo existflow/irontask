@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/db"
-	"github.com/tphuc/irontask/internal/sync"
+	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/sync"
 )
 
 var syncCmd = &cobra.Command{
@@ -17,8 +17,8 @@ var syncCmd = &cobra.Command{
 	Long: `Sync your tasks across devices.
 
 Commands:
-  task sync              # Sync now
-  task sync status       # Show sync status`,
+  irontask sync              # Sync now
+  irontask sync status       # Show sync status`,
 	RunE: runSync,
 }
 

@@ -96,7 +96,7 @@
 | **Navigation** | |
 | `j/↓` | Move down |
 | `k/↑` | Move up |
-| `Tab` | Switch sidebar ↔ task list |
+| `Tab` | Switch sidebar ↔ irontask list |
 | `Enter` | Select project / Toggle done |
 | **Actions** | |
 | `a` | Add task to current project |
@@ -115,10 +115,10 @@
 
 ## CLI Examples
 
-### `task project list`
+### `irontask project list`
 
 ```
-$ task project list
+$ irontask project list
 
   Name        Tasks   
  ────────────────────
@@ -129,10 +129,10 @@ $ task project list
 3 projects, 7 pending tasks
 ```
 
-### `task list --project work`
+### `irontask list --project work`
 
 ```
-$ task list --project work
+$ irontask list --project work
 
 📁 Work (3 pending)
 
@@ -143,10 +143,10 @@ $ task list --project work
   3   Review pull request #234       -            P3
 ```
 
-### `task add`
+### `irontask add`
 
 ```
-$ task add "Deploy to staging" --project work -p 1
+$ irontask add "Deploy to staging" --project work -p 1
 
 ✓ Added to [Work]: "Deploy to staging" (P1)
 ```

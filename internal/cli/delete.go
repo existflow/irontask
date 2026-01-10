@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/config"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/config"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
 )
 
 var deleteCmd = &cobra.Command{
@@ -19,7 +19,7 @@ var deleteCmd = &cobra.Command{
 	Long: `Delete a task by its ID.
 
 Examples:
-  task delete abc123
+  irontask delete abc123
   task rm abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDelete,

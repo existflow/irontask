@@ -19,7 +19,7 @@
 ### From Source
 
 ```bash
-go install github.com/tphuc/irontask/cmd/irontask@latest
+go install github.com/existflow/irontask/cmd/irontask@latest
 ```
 
 ### Docker (Sync Server)
@@ -27,7 +27,7 @@ go install github.com/tphuc/irontask/cmd/irontask@latest
 To self-host the sync server:
 
 ```bash
-git clone https://github.com/tphuc/irontask.git
+git clone https://github.com/existflow/irontask.git
 cd irontask
 docker-compose up -d
 ```
@@ -50,9 +50,9 @@ docker-compose up -d
 
 3. **CLI Commands**
    ```bash
-   task add "Buy milk"
-   task list
-   task done <id>
+   irontask add "Buy milk"
+   irontask list
+   irontask done <id>
    ```
 
 ## Configuration
@@ -70,13 +70,13 @@ IronTask allows you to sync tasks between devices encrypted.
 
 1. **Register** (on first device):
    ```bash
-   task sync register
+   irontask sync register
    # Prompts for email, password
    ```
 
 2. **Login** (on other devices):
    ```bash
-   task sync login
+   irontask sync login
    # Prompts for email, password
    ```
 
@@ -86,7 +86,7 @@ IronTask allows you to sync tasks between devices encrypted.
 4. **Status**:
    Check sync status:
    ```bash
-   task sync status
+   irontask sync status
    ```
 
 ## Shell Completion

@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/sync"
+	"github.com/existflow/irontask/internal/sync"
 	"golang.org/x/term"
 )
 

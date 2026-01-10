@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/db"
 )
 
 // Config holds sync configuration
@@ -322,7 +322,7 @@ func (c *Client) GenerateEncryptionKey(password string) (string, error) {
 // GetCrypto returns a Crypto instance for encryption/decryption
 func (c *Client) GetCrypto(password string) (*Crypto, error) {
 	if c.config.Salt == "" {
-		return nil, fmt.Errorf("no encryption key configured, run 'task sync key' first")
+		return nil, fmt.Errorf("no encryption key configured, run 'irontask sync key' first")
 	}
 
 	salt, err := base64.StdEncoding.DecodeString(c.config.Salt)

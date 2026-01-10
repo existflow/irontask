@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/tphuc/irontask/internal/database"
-	"github.com/tphuc/irontask/internal/db"
+	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/db"
 )
 
 var projectCmd = &cobra.Command{
@@ -25,8 +25,8 @@ var projectNewCmd = &cobra.Command{
 	Long: `Create a new project for organizing tasks.
 
 Examples:
-  task project new "Work"
-  task project new "Personal" --color "#FF6B6B"`,
+  irontask project new "Work"
+  irontask project new "Personal" --color "#FF6B6B"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runProjectNew,
 }
