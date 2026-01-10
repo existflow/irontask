@@ -10,6 +10,24 @@ import (
 	"database/sql"
 )
 
+const clearProjects = `-- name: ClearProjects :exec
+DELETE FROM projects
+`
+
+func (q *Queries) ClearProjects(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearProjects)
+	return err
+}
+
+const clearTasks = `-- name: ClearTasks :exec
+DELETE FROM tasks
+`
+
+func (q *Queries) ClearTasks(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearTasks)
+	return err
+}
+
 const countTasks = `-- name: CountTasks :one
 SELECT 
     COUNT(*) FILTER (WHERE done = 0),

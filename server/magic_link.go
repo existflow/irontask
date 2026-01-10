@@ -1,12 +1,17 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/tphuc/irontask/server/database"
 )
 
 type magicLinkRequest struct {
@@ -24,15 +29,7 @@ func (s *Server) handleMagicLink(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "email required"})
 	}
 
-	// Check if user exists
-	var userID string
-	err := s.db.QueryRow(`SELECT id FROM users WHERE email = $1`, req.Email).Scan(&userID)
-	if err != nil {
-		// Don't reveal if email exists
-		return c.JSON(http.StatusOK, map[string]string{"message": "if email exists, a magic link will be sent"})
-	}
-
-	// Generate token
+	// Generate magic link token
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		c.Logger().Error("token generation error:", err)
@@ -40,26 +37,56 @@ func (s *Server) handleMagicLink(c echo.Context) error {
 	}
 	token := hex.EncodeToString(tokenBytes)
 
+	var email string
+	// Check if user exists
+	user, err := s.queries.GetUserByEmail(c.Request().Context(), req.Email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Auto-register user
+			username := req.Email
+			if parts := strings.Split(req.Email, "@"); len(parts) > 0 {
+				username = parts[0]
+			}
+
+			fmt.Printf("🌱 Auto-registering user: %s (%s)\n", username, req.Email)
+
+			newUser, err := s.queries.CreateUser(c.Request().Context(), database.CreateUserParams{
+				Username:     username,
+				Email:        req.Email,
+				PasswordHash: "MAGIC_LINK_ONLY_" + token[:16],
+			})
+			if err != nil {
+				c.Logger().Error("auto-registration error:", err)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to auto-register"})
+			}
+			email = newUser.Email
+		} else {
+			c.Logger().Error("db error:", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		}
+	} else {
+		email = user.Email
+	}
+
 	// Token expires in 15 minutes
 	expiresAt := time.Now().Add(15 * time.Minute)
 
 	// Insert magic link
-	_, err = s.db.Exec(`
-		INSERT INTO magic_links (email, token, expires_at)
-		VALUES ($1, $2, $3)`,
-		req.Email, token, expiresAt,
-	)
+	err = s.queries.CreateMagicLink(c.Request().Context(), database.CreateMagicLinkParams{
+		Email:     email,
+		Token:     token,
+		ExpiresAt: expiresAt,
+	})
 	if err != nil {
 		c.Logger().Error("db error:", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
-	c.Logger().Infof("Magic link created for: %s", req.Email)
+	fmt.Printf("\n✨ MAGIC LINK GENERATED ✨\nEmail: %s\nToken: %s\n\n", req.Email, token)
 
-	// In production, send email here
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "if email exists, a magic link will be sent",
-		"token":   token, // Remove in production
+		"token":   token,
 	})
 }
 
@@ -71,53 +98,43 @@ func (s *Server) handleMagicLinkVerify(c echo.Context) error {
 	}
 
 	// Find magic link
-	var email string
-	var expiresAt time.Time
-	var used bool
-	err := s.db.QueryRow(`
-		SELECT email, expires_at, used FROM magic_links 
-		WHERE token = $1`,
-		token,
-	).Scan(&email, &expiresAt, &used)
-
+	link, err := s.queries.GetMagicLink(c.Request().Context(), token)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid token"})
 	}
 
-	if used {
+	if link.Used.Bool {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "token already used"})
 	}
 
-	if time.Now().After(expiresAt) {
+	if time.Now().After(link.ExpiresAt) {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "token expired"})
 	}
 
 	// Mark as used
-	_, err = s.db.Exec(`UPDATE magic_links SET used = TRUE WHERE token = $1`, token)
-	if err != nil {
+	if err := s.queries.MarkMagicLinkUsed(context.Background(), token); err != nil {
 		c.Logger().Error("db error:", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
 	// Find user
-	var userID string
-	err = s.db.QueryRow(`SELECT id FROM users WHERE email = $1`, email).Scan(&userID)
+	user, err := s.queries.GetUserByEmail(c.Request().Context(), link.Email)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 	}
 
 	// Create session
-	sessionToken, sessionExpires, err := s.createSession(userID)
+	sessionToken, sessionExpires, err := s.createSession(user.ID.String())
 	if err != nil {
 		c.Logger().Error("session error:", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
-	c.Logger().Infof("Magic link login: %s", email)
+	c.Logger().Infof("Magic link login: %s", link.Email)
 
 	return c.JSON(http.StatusOK, authResponse{
 		Token:     sessionToken,
 		ExpiresAt: sessionExpires.Format(time.RFC3339),
-		UserID:    userID,
+		UserID:    user.ID.String(),
 	})
 }

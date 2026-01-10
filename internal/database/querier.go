@@ -10,6 +10,8 @@ import (
 )
 
 type Querier interface {
+	ClearProjects(ctx context.Context) error
+	ClearTasks(ctx context.Context) error
 	CountTasks(ctx context.Context, projectID string) (CountTasksRow, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) error

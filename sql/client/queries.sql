@@ -56,3 +56,9 @@ SELECT
     COUNT(*)
 FROM tasks 
 WHERE project_id = ? AND deleted_at IS NULL;
+
+-- name: ClearTasks :exec
+DELETE FROM tasks;
+
+-- name: ClearProjects :exec
+DELETE FROM projects;

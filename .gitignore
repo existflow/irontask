@@ -1,8 +1,8 @@
 # Binaries
-irontask
-irontask-server
-task
-main
+/irontask
+/irontask-server
+/task
+/main
 *.exe
 *.test
 

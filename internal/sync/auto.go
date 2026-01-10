@@ -29,7 +29,7 @@ func NewAutoSync(client *Client, database *db.DB) *AutoSync {
 
 // TriggerSync marks that a sync is needed (debounced)
 func (a *AutoSync) TriggerSync() {
-	if !a.client.IsLoggedIn() {
+	if !a.client.CanAutoSync() {
 		return
 	}
 
@@ -59,7 +59,7 @@ func (a *AutoSync) performSync() {
 	a.pending = false
 	a.mu.Unlock()
 
-	result, err := a.client.Sync(a.db)
+	result, err := a.client.Sync(a.db, SyncModeMerge)
 	if err != nil {
 		return
 	}
@@ -85,7 +85,7 @@ func (a *AutoSync) SyncNowIfPending() error {
 		return nil
 	}
 
-	_, err := a.client.Sync(a.db)
+	_, err := a.client.Sync(a.db, SyncModeMerge)
 	return err
 }
 

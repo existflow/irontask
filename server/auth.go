@@ -1,13 +1,16 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/tphuc/irontask/server/database"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,13 +55,12 @@ func (s *Server) handleRegister(c echo.Context) error {
 	}
 
 	// Insert user
-	var userID string
-	err = s.db.QueryRow(`
-		INSERT INTO users (username, email, password_hash)
-		VALUES ($1, $2, $3)
-		RETURNING id`,
-		req.Username, req.Email, string(hash),
-	).Scan(&userID)
+	user, err := s.queries.CreateUser(c.Request().Context(), database.CreateUserParams{
+		Username:     req.Username,
+		Email:        req.Email,
+		PasswordHash: string(hash),
+	})
+	userID := user.ID.String()
 
 	if err != nil {
 		if strings.Contains(err.Error(), "unique") {
@@ -92,23 +94,18 @@ func (s *Server) handleLogin(c echo.Context) error {
 	}
 
 	// Find user
-	var userID, passwordHash string
-	err := s.db.QueryRow(`
-		SELECT id, password_hash FROM users WHERE username = $1`,
-		req.Username,
-	).Scan(&userID, &passwordHash)
-
+	user, err := s.queries.GetUserByUsername(c.Request().Context(), req.Username)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 	}
 
 	// Check password
-	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 	}
 
 	// Create session
-	token, expiresAt, err := s.createSession(userID)
+	token, expiresAt, err := s.createSession(user.ID.String())
 	if err != nil {
 		c.Logger().Error("session error:", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -119,29 +116,50 @@ func (s *Server) handleLogin(c echo.Context) error {
 	return c.JSON(http.StatusOK, authResponse{
 		Token:     token,
 		ExpiresAt: expiresAt.Format(time.RFC3339),
-		UserID:    userID,
+		UserID:    user.ID.String(),
 	})
 }
 
 // handleMe returns current user info
 func (s *Server) handleMe(c echo.Context) error {
-	userID := c.Get("user_id").(string)
+	userIDStr := c.Get("user_id").(string)
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user id"})
+	}
 
-	var username, email string
-	err := s.db.QueryRow(`
-		SELECT username, email FROM users WHERE id = $1`,
-		userID,
-	).Scan(&username, &email)
-
+	user, err := s.queries.GetUserByID(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{
-		"id":       userID,
-		"username": username,
-		"email":    email,
+		"id":       user.ID.String(),
+		"username": user.Username,
+		"email":    user.Email,
 	})
+}
+
+// handleLogout revokes the current session
+func (s *Server) handleLogout(c echo.Context) error {
+	// Token is already validated by middleware if this is protected
+	// But we need to extract it again.
+	// We can get it from header manually.
+	auth := c.Request().Header.Get("Authorization")
+	token := strings.TrimPrefix(auth, "Bearer ")
+
+	if token == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid token"})
+	}
+
+	if err := s.queries.DeleteSession(c.Request().Context(), token); err != nil {
+		c.Logger().Error("logout error:", err)
+		// Even if error, we probably want to say success to client?
+		// But 500 is safer if DB failed.
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "logged out"})
 }
 
 // createSession creates a new session for a user
@@ -156,11 +174,16 @@ func (s *Server) createSession(userID string) (string, time.Time, error) {
 	// Session expires in 30 days
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
-	_, err := s.db.Exec(`
-		INSERT INTO sessions (user_id, token, expires_at)
-		VALUES ($1, $2, $3)`,
-		userID, token, expiresAt,
-	)
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	token, err = s.queries.CreateSession(context.Background(), database.CreateSessionParams{
+		UserID:    userUUID,
+		Token:     token,
+		ExpiresAt: expiresAt,
+	})
 
 	return token, expiresAt, err
 }

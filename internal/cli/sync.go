@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/tphuc/irontask/internal/db"
 	"github.com/tphuc/irontask/internal/sync"
-	"golang.org/x/term"
 )
 
 var syncCmd = &cobra.Command{
@@ -20,29 +18,8 @@ var syncCmd = &cobra.Command{
 
 Commands:
   task sync              # Sync now
-  task sync register     # Create account
-  task sync login        # Login to existing account
-  task sync logout       # Logout
   task sync status       # Show sync status`,
 	RunE: runSync,
-}
-
-var syncRegisterCmd = &cobra.Command{
-	Use:   "register",
-	Short: "Create a new account",
-	RunE:  runSyncRegister,
-}
-
-var syncLoginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Login to existing account",
-	RunE:  runSyncLogin,
-}
-
-var syncLogoutCmd = &cobra.Command{
-	Use:   "logout",
-	Short: "Logout and clear credentials",
-	RunE:  runSyncLogout,
 }
 
 var syncStatusCmd = &cobra.Command{
@@ -63,14 +40,13 @@ var syncConfigCmd = &cobra.Command{
 }
 
 func init() {
-	syncCmd.AddCommand(syncRegisterCmd)
-	syncCmd.AddCommand(syncLoginCmd)
-	syncCmd.AddCommand(syncLogoutCmd)
 	syncCmd.AddCommand(syncStatusCmd)
 	syncCmd.AddCommand(syncKeyCmd)
 	syncCmd.AddCommand(syncConfigCmd)
 
-	syncRegisterCmd.Flags().String("server", "", "Server URL (default: http://localhost:8080)")
+	syncCmd.Flags().Bool("pull", false, "Force sync from remote (replaces local)")
+	syncCmd.Flags().Bool("push", false, "Force sync from local (replaces remote)")
+
 	syncConfigCmd.Flags().String("server", "", "Set server URL")
 	syncConfigCmd.Flags().Bool("insecure", false, "Allow insecure (HTTP) connection")
 }
@@ -81,113 +57,36 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if !client.IsLoggedIn() {
-		fmt.Println("Not logged in. Run 'task sync login' or 'task sync register' first.")
-		return nil
-	}
-
-	// Open database
 	database, err := db.OpenDefault()
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer database.Close()
 
-	fmt.Println("🔄 Syncing...")
-	result, err := client.Sync(database)
+	mode := sync.SyncModeMerge
+	pull, _ := cmd.Flags().GetBool("pull")
+	push, _ := cmd.Flags().GetBool("push")
+
+	if pull && push {
+		return fmt.Errorf("cannot use both --pull and --push")
+	}
+
+	if pull {
+		mode = sync.SyncModeRemoteToLocal
+		fmt.Println("⚠️  Forcing sync from remote (replacing local data)...")
+	} else if push {
+		mode = sync.SyncModeLocalToRemote
+		fmt.Println("⚠️  Forcing sync from local (replacing remote data)...")
+	} else {
+		fmt.Println("🔄 Synchronizing...")
+	}
+
+	result, err := client.Sync(database, mode)
 	if err != nil {
 		return fmt.Errorf("sync failed: %w", err)
 	}
 
 	fmt.Printf("✓ Sync complete! Pushed: %d, Pulled: %d\n", result.Pushed, result.Pulled)
-	return nil
-}
-
-func runSyncRegister(cmd *cobra.Command, args []string) error {
-	client, err := sync.NewClient()
-	if err != nil {
-		return err
-	}
-
-	// Check for server flag
-	server, _ := cmd.Flags().GetString("server")
-	if server != "" {
-		if err := client.SetServer(server); err != nil {
-			return err
-		}
-		fmt.Printf("✓ Server set to: %s\n", server)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("Username: ")
-	username, _ := reader.ReadString('\n')
-	username = strings.TrimSpace(username)
-
-	fmt.Print("Email: ")
-	email, _ := reader.ReadString('\n')
-	email = strings.TrimSpace(email)
-
-	fmt.Print("Password: ")
-	passwordBytes, _ := term.ReadPassword(int(syscall.Stdin))
-	password := string(passwordBytes)
-	fmt.Println()
-
-	fmt.Print("Confirm Password: ")
-	confirmBytes, _ := term.ReadPassword(int(syscall.Stdin))
-	confirm := string(confirmBytes)
-	fmt.Println()
-
-	if password != confirm {
-		return fmt.Errorf("passwords do not match")
-	}
-
-	fmt.Println("🔄 Creating account...")
-	if err := client.Register(username, email, password); err != nil {
-		return err
-	}
-
-	fmt.Println("✓ Account created! You are now logged in.")
-	return nil
-}
-
-func runSyncLogin(cmd *cobra.Command, args []string) error {
-	client, err := sync.NewClient()
-	if err != nil {
-		return err
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("Username: ")
-	username, _ := reader.ReadString('\n')
-	username = strings.TrimSpace(username)
-
-	fmt.Print("Password: ")
-	passwordBytes, _ := term.ReadPassword(int(syscall.Stdin))
-	password := string(passwordBytes)
-	fmt.Println()
-
-	fmt.Println("🔄 Logging in...")
-	if err := client.Login(username, password); err != nil {
-		return err
-	}
-
-	fmt.Println("✓ Logged in successfully!")
-	return nil
-}
-
-func runSyncLogout(cmd *cobra.Command, args []string) error {
-	client, err := sync.NewClient()
-	if err != nil {
-		return err
-	}
-
-	if err := client.Logout(); err != nil {
-		return err
-	}
-
-	fmt.Println("✓ Logged out")
 	return nil
 }
 

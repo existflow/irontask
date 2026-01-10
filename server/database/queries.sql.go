@@ -13,6 +13,40 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearProjects = `-- name: ClearProjects :exec
+DELETE FROM projects WHERE user_id = $1
+`
+
+func (q *Queries) ClearProjects(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, clearProjects, userID)
+	return err
+}
+
+const clearTasks = `-- name: ClearTasks :exec
+DELETE FROM tasks WHERE user_id = $1
+`
+
+func (q *Queries) ClearTasks(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, clearTasks, userID)
+	return err
+}
+
+const createMagicLink = `-- name: CreateMagicLink :exec
+INSERT INTO magic_links (email, token, expires_at)
+VALUES ($1, $2, $3)
+`
+
+type CreateMagicLinkParams struct {
+	Email     string    `json:"email"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (q *Queries) CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams) error {
+	_, err := q.db.ExecContext(ctx, createMagicLink, arg.Email, arg.Token, arg.ExpiresAt)
+	return err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (user_id, token, expires_at)
 VALUES ($1, $2, $3)
@@ -70,6 +104,25 @@ DELETE FROM sessions WHERE token = $1
 func (q *Queries) DeleteSession(ctx context.Context, token string) error {
 	_, err := q.db.ExecContext(ctx, deleteSession, token)
 	return err
+}
+
+const getMagicLink = `-- name: GetMagicLink :one
+SELECT email, expires_at, used
+FROM magic_links
+WHERE token = $1
+`
+
+type GetMagicLinkRow struct {
+	Email     string       `json:"email"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	Used      sql.NullBool `json:"used"`
+}
+
+func (q *Queries) GetMagicLink(ctx context.Context, token string) (GetMagicLinkRow, error) {
+	row := q.db.QueryRowContext(ctx, getMagicLink, token)
+	var i GetMagicLinkRow
+	err := row.Scan(&i.Email, &i.ExpiresAt, &i.Used)
+	return i, err
 }
 
 const getProjectsChanged = `-- name: GetProjectsChanged :many
@@ -232,69 +285,105 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 	return i, err
 }
 
-const upsertProject = `-- name: UpsertProject :exec
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT id, username, email, password_hash
+FROM users
+WHERE username = $1
+`
+
+type GetUserByUsernameRow struct {
+	ID           uuid.UUID `json:"id"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUserByUsernameRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
+	var i GetUserByUsernameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :exec
+UPDATE magic_links SET used = TRUE WHERE token = $1
+`
+
+func (q *Queries) MarkMagicLinkUsed(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, markMagicLinkUsed, token)
+	return err
+}
+
+const upsertProject = `-- name: UpsertProject :one
 INSERT INTO projects (user_id, client_id, name, color, encrypted_data, sync_version, deleted, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+VALUES ($1, $2, '', $3, $4, 
+    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM projects WHERE user_id = $1), 
+    $5, NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
-SET name = EXCLUDED.name,
-    color = EXCLUDED.color,
-    encrypted_data = EXCLUDED.encrypted_data,
-    sync_version = EXCLUDED.sync_version,
+SET encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
+    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM projects WHERE user_id = $1),
     updated_at = NOW()
+RETURNING sync_version
 `
 
 type UpsertProjectParams struct {
 	UserID        uuid.UUID      `json:"user_id"`
 	ClientID      string         `json:"client_id"`
-	Name          string         `json:"name"`
 	Color         sql.NullString `json:"color"`
 	EncryptedData []byte         `json:"encrypted_data"`
-	SyncVersion   sql.NullInt64  `json:"sync_version"`
 	Deleted       sql.NullBool   `json:"deleted"`
 }
 
-func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) error {
-	_, err := q.db.ExecContext(ctx, upsertProject,
+func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) (sql.NullInt64, error) {
+	row := q.db.QueryRowContext(ctx, upsertProject,
 		arg.UserID,
 		arg.ClientID,
-		arg.Name,
 		arg.Color,
 		arg.EncryptedData,
-		arg.SyncVersion,
 		arg.Deleted,
 	)
-	return err
+	var sync_version sql.NullInt64
+	err := row.Scan(&sync_version)
+	return sync_version, err
 }
 
-const upsertTask = `-- name: UpsertTask :exec
-INSERT INTO tasks (user_id, client_id, project_id, encrypted_data, sync_version, deleted, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, NOW())
+const upsertTask = `-- name: UpsertTask :one
+INSERT INTO tasks (user_id, client_id, project_id, encrypted_data, deleted, sync_version, updated_at)
+VALUES ($1, $2, $3, $4, $5, 
+    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM tasks WHERE user_id = $1),
+    NOW())
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET project_id = EXCLUDED.project_id,
     encrypted_data = EXCLUDED.encrypted_data,
-    sync_version = EXCLUDED.sync_version,
     deleted = EXCLUDED.deleted,
+    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM tasks WHERE user_id = $1),
     updated_at = NOW()
+RETURNING sync_version
 `
 
 type UpsertTaskParams struct {
-	UserID        uuid.UUID     `json:"user_id"`
-	ClientID      string        `json:"client_id"`
-	ProjectID     string        `json:"project_id"`
-	EncryptedData []byte        `json:"encrypted_data"`
-	SyncVersion   sql.NullInt64 `json:"sync_version"`
-	Deleted       sql.NullBool  `json:"deleted"`
+	UserID        uuid.UUID    `json:"user_id"`
+	ClientID      string       `json:"client_id"`
+	ProjectID     string       `json:"project_id"`
+	EncryptedData []byte       `json:"encrypted_data"`
+	Deleted       sql.NullBool `json:"deleted"`
 }
 
-func (q *Queries) UpsertTask(ctx context.Context, arg UpsertTaskParams) error {
-	_, err := q.db.ExecContext(ctx, upsertTask,
+func (q *Queries) UpsertTask(ctx context.Context, arg UpsertTaskParams) (sql.NullInt64, error) {
+	row := q.db.QueryRowContext(ctx, upsertTask,
 		arg.UserID,
 		arg.ClientID,
 		arg.ProjectID,
 		arg.EncryptedData,
-		arg.SyncVersion,
 		arg.Deleted,
 	)
-	return err
+	var sync_version sql.NullInt64
+	err := row.Scan(&sync_version)
+	return sync_version, err
 }

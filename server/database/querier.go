@@ -6,21 +6,28 @@ package database
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/google/uuid"
 )
 
 type Querier interface {
+	ClearProjects(ctx context.Context, userID uuid.UUID) error
+	ClearTasks(ctx context.Context, userID uuid.UUID) error
+	CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) (string, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	DeleteSession(ctx context.Context, token string) error
+	GetMagicLink(ctx context.Context, token string) (GetMagicLinkRow, error)
 	GetProjectsChanged(ctx context.Context, arg GetProjectsChangedParams) ([]GetProjectsChangedRow, error)
 	GetSession(ctx context.Context, token string) (GetSessionRow, error)
 	GetTasksChanged(ctx context.Context, arg GetTasksChangedParams) ([]GetTasksChangedRow, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
-	UpsertProject(ctx context.Context, arg UpsertProjectParams) error
-	UpsertTask(ctx context.Context, arg UpsertTaskParams) error
+	GetUserByUsername(ctx context.Context, username string) (GetUserByUsernameRow, error)
+	MarkMagicLinkUsed(ctx context.Context, token string) error
+	UpsertProject(ctx context.Context, arg UpsertProjectParams) (sql.NullInt64, error)
+	UpsertTask(ctx context.Context, arg UpsertTaskParams) (sql.NullInt64, error)
 }
 
 var _ Querier = (*Queries)(nil)

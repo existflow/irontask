@@ -43,27 +43,72 @@ type SyncResult struct {
 	Pulled int
 }
 
-// Sync performs full sync with server
-func (c *Client) Sync(database *db.DB) (*SyncResult, error) {
+// SyncMode defines how the sync should be performed
+type SyncMode int
+
+const (
+	SyncModeMerge         SyncMode = iota // Default: Push local, then pull remote
+	SyncModeRemoteToLocal                 // Wipe local, then pull all from remote
+	SyncModeLocalToRemote                 // Wipe remote, then push all from local
+)
+
+// Sync performs sync with server based on the specified mode
+func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 	if !c.IsLoggedIn() {
 		return nil, fmt.Errorf("not logged in")
 	}
 
 	result := &SyncResult{}
 
-	// 1. Push local changes
-	pushed, err := c.pushChanges(database)
-	if err != nil {
-		return nil, fmt.Errorf("push failed: %w", err)
-	}
-	result.Pushed = pushed
+	switch mode {
+	case SyncModeRemoteToLocal:
+		// 1. Wipe local data
+		if err := c.ClearLocal(database); err != nil {
+			return nil, fmt.Errorf("failed to clear local data: %w", err)
+		}
+		// 2. Clear last sync version to pull everything
+		c.config.LastSync = 0
+		c.saveConfig()
 
-	// 2. Pull remote changes
-	pulled, err := c.pullChanges(database)
-	if err != nil {
-		return nil, fmt.Errorf("pull failed: %w", err)
+		// 3. Pull remote changes
+		pulled, err := c.pullChanges(database)
+		if err != nil {
+			return nil, fmt.Errorf("pull failed: %w", err)
+		}
+		result.Pulled = pulled
+
+	case SyncModeLocalToRemote:
+		// 1. Wipe remote data
+		if err := c.ClearRemote(); err != nil {
+			return nil, fmt.Errorf("failed to clear remote data: %w", err)
+		}
+		// 2. Push local changes
+		pushed, err := c.pushChanges(database)
+		if err != nil {
+			return nil, fmt.Errorf("push failed: %w", err)
+		}
+		result.Pushed = pushed
+
+	default: // SyncModeMerge
+		// 1. Push local changes
+		pushed, err := c.pushChanges(database)
+		if err != nil {
+			return nil, fmt.Errorf("push failed: %w", err)
+		}
+		result.Pushed = pushed
+
+		// 2. Pull remote changes
+		pulled, err := c.pullChanges(database)
+		if err != nil {
+			return nil, fmt.Errorf("pull failed: %w", err)
+		}
+		result.Pulled = pulled
 	}
-	result.Pulled = pulled
+
+	// Mark as synced once after first successful sync
+	if !c.config.HasSyncedOnce {
+		c.SetSyncedOnce()
+	}
 
 	return result, nil
 }

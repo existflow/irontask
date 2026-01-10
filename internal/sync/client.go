@@ -2,6 +2,7 @@ package sync
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/tphuc/irontask/internal/db"
 )
 
 // Config holds sync configuration
@@ -18,6 +21,7 @@ type Config struct {
 	Token         string `json:"token"`
 	UserID        string `json:"user_id"`
 	LastSync      int64  `json:"last_sync"`
+	HasSyncedOnce bool   `json:"has_synced_once"`
 	EncryptionKey string `json:"encryption_key,omitempty"` // Base64 encoded
 	Salt          string `json:"salt,omitempty"`           // Base64 encoded salt for key derivation
 }
@@ -87,6 +91,17 @@ func (c *Client) IsLoggedIn() bool {
 	return c.config.Token != ""
 }
 
+// CanAutoSync returns true if auto-sync is allowed (logged in AND has synced once)
+func (c *Client) CanAutoSync() bool {
+	return c.IsLoggedIn() && c.config.HasSyncedOnce
+}
+
+// SetSyncedOnce marks that the user has completed a full sync
+func (c *Client) SetSyncedOnce() error {
+	c.config.HasSyncedOnce = true
+	return c.saveConfig()
+}
+
 // Register creates a new account
 func (c *Client) Register(username, email, password string) error {
 	body, _ := json.Marshal(map[string]string{
@@ -120,6 +135,7 @@ func (c *Client) Register(username, email, password string) error {
 
 	c.config.Token = result.Token
 	c.config.UserID = result.UserID
+	c.config.HasSyncedOnce = false
 	return c.saveConfig()
 }
 
@@ -155,15 +171,122 @@ func (c *Client) Login(username, password string) error {
 
 	c.config.Token = result.Token
 	c.config.UserID = result.UserID
+	c.config.HasSyncedOnce = false
+	return c.saveConfig()
+}
+
+// RequestMagicLink requests a login link via email
+func (c *Client) RequestMagicLink(email string) (string, error) {
+	body, _ := json.Marshal(map[string]string{
+		"email": email,
+	})
+
+	resp, err := c.httpClient.Post(
+		c.config.ServerURL+"/api/v1/magic-link",
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("request failed: %s", string(respBody))
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	return result.Token, nil
+}
+
+// VerifyMagicLink verifies the token and logs in
+func (c *Client) VerifyMagicLink(token string) error {
+	resp, err := c.httpClient.Get(
+		c.config.ServerURL + "/api/v1/magic-link/" + token,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("verification failed: %s", string(respBody))
+	}
+
+	var result struct {
+		Token  string `json:"token"`
+		UserID string `json:"user_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return err
+	}
+
+	c.config.Token = result.Token
+	c.config.UserID = result.UserID
+	c.config.HasSyncedOnce = false
 	return c.saveConfig()
 }
 
 // Logout clears the session
 func (c *Client) Logout() error {
+	if c.config.Token != "" {
+		// Call server logout
+		req, err := http.NewRequest("POST", c.config.ServerURL+"/api/v1/logout", nil)
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer "+c.config.Token)
+			c.httpClient.Do(req) // We don't care about the response/error much here, just best effort
+		}
+	}
+
 	c.config.Token = ""
 	c.config.UserID = ""
 	c.config.LastSync = 0
+	c.config.HasSyncedOnce = false
 	return c.saveConfig()
+}
+
+// ClearLocal wipes all local data
+func (c *Client) ClearLocal(dbConn *db.DB) error {
+	ctx := context.Background()
+	if err := dbConn.ClearTasks(ctx); err != nil {
+		return err
+	}
+	if err := dbConn.ClearProjects(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ClearRemote wipes all remote data
+func (c *Client) ClearRemote() error {
+	if !c.IsLoggedIn() {
+		return fmt.Errorf("not logged in")
+	}
+
+	req, err := http.NewRequest("POST", c.config.ServerURL+"/api/v1/clear", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.config.Token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remote clear failed: %s", string(body))
+	}
+
+	return nil
 }
 
 // GetStatus returns current sync status

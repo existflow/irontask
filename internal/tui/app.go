@@ -91,6 +91,7 @@ type keyMap struct {
 	Help     key.Binding
 	Quit     key.Binding
 	Escape   key.Binding
+	Logout   key.Binding
 }
 
 var keys = keyMap{
@@ -107,6 +108,7 @@ var keys = keyMap{
 	Help:    key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 	Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	Escape:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+	Logout:  key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "logout")),
 }
 
 // NewModel creates a new TUI model
@@ -442,6 +444,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, keys.Help):
 			m.mode = ModeHelp
+
+		case key.Matches(msg, keys.Logout):
+			if m.syncClient != nil {
+				if err := m.syncClient.Logout(); err != nil {
+					m.message = fmt.Sprintf("Logout error: %v", err)
+				} else {
+					m.syncClient = nil
+					m.autoSync = nil
+					m.message = "Logged out successfully"
+				}
+			} else {
+				m.message = "Not logged in"
+			}
 		}
 	}
 
@@ -766,7 +781,7 @@ func (m Model) renderStatusBar() string {
 		return StatusBarStyle.Width(m.width).Render("/" + m.input.View() + matches)
 	}
 
-	help := "/:search  n/N:next/prev  a:add  e:edit  x:done  d:del  ?:help  q:quit"
+	help := "/:search  n/N:next/prev  a:add  e:edit  x:done  d:del  ?:help  q:quit  L:logout"
 	if m.filterText != "" {
 		if len(m.matchIndices) > 0 {
 			help = fmt.Sprintf("/%s  [%d/%d matches]  n:next  N:prev  Esc:clear",

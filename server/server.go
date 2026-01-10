@@ -7,12 +7,14 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	_ "github.com/lib/pq"
+	"github.com/tphuc/irontask/server/database"
 )
 
 // Server is the sync server
 type Server struct {
-	db   *sql.DB
-	echo *echo.Echo
+	db      *sql.DB
+	queries *database.Queries
+	echo    *echo.Echo
 }
 
 // New creates a new server
@@ -26,7 +28,10 @@ func New(dbURL string) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{db: db}
+	s := &Server{
+		db:      db,
+		queries: database.New(db),
+	}
 
 	// Run migrations
 	if err := s.migrate(); err != nil {
@@ -65,8 +70,10 @@ func (s *Server) setupEcho() {
 	protected := api.Group("")
 	protected.Use(s.authMiddleware)
 	protected.GET("/me", s.handleMe)
+	protected.POST("/logout", s.handleLogout)
 	protected.GET("/sync", s.handleSyncPull)
 	protected.POST("/sync", s.handleSyncPush)
+	protected.POST("/clear", s.handleClear)
 
 	s.echo = e
 }

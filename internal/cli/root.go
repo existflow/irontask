@@ -48,4 +48,6 @@ func init() {
 	rootCmd.AddCommand(projectCmd)
 	rootCmd.AddCommand(contextCmd)
 	rootCmd.AddCommand(syncCmd)
+	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(clearCmd)
 }
