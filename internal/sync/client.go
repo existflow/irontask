@@ -54,16 +54,26 @@ func NewClient() (*Client, error) {
 }
 
 func (c *Client) loadConfig() {
+	defaultServer := os.Getenv("DEFAULT_SERVER_URL")
+	if defaultServer == "" {
+		defaultServer = "https://irontask-server-dev.onrender.com"
+	}
+
 	data, err := os.ReadFile(c.configPath)
 	if err != nil {
 		c.config = &Config{
-			ServerURL: "http://localhost:8080",
+			ServerURL: defaultServer,
 		}
 		return
 	}
 
 	c.config = &Config{}
 	_ = json.Unmarshal(data, c.config)
+
+	// If loaded config has empty URL (unlikely but safe), apply default
+	if c.config.ServerURL == "" {
+		c.config.ServerURL = defaultServer
+	}
 }
 
 func (c *Client) saveConfig() error {
