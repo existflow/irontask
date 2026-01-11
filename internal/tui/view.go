@@ -179,8 +179,15 @@ func (m Model) renderStatusBar() string {
 
 	// Append sync status (right aligned)
 	syncMsg := ""
-	if m.autoSync != nil && m.autoSync.IsPending() {
-		syncMsg = "Syncing..."
+	if m.autoSync != nil {
+		if m.autoSync.IsPending() {
+			syncMsg = "Syncing..."
+		} else if err := m.autoSync.GetLastError(); err != nil {
+			syncMsg = "Sync Error!"
+			if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "Unauthorized") {
+				syncMsg = "Auth Error (press L)"
+			}
+		}
 	}
 
 	if syncMsg != "" {

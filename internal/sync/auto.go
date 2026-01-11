@@ -18,6 +18,7 @@ type AutoSync struct {
 	mu           sync.Mutex
 	stopCh       chan struct{}
 	onPull       func() // Callback when remote changes are pulled
+	lastError    error
 }
 
 // NewAutoSync creates a new auto-sync manager
@@ -77,6 +78,10 @@ func (a *AutoSync) doSync() {
 	}()
 
 	result, err := a.client.Sync(a.db, SyncModeMerge)
+	a.mu.Lock()
+	a.lastError = err
+	a.mu.Unlock()
+
 	if err != nil {
 		return
 	}
@@ -148,4 +153,11 @@ func (a *AutoSync) IsPending() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.pending
+}
+
+// GetLastError returns the last sync error
+func (a *AutoSync) GetLastError() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastError
 }
