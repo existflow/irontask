@@ -145,9 +145,13 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
+	c.Logger().Infof("Sync push received: %d items from user %s", len(req.Items), userID)
+
 	var updated []SyncItem
 
 	for _, item := range req.Items {
+		c.Logger().Infof("Processing item: type=%s, clientID=%s, deleted=%v", item.Type, item.ClientID, item.Deleted)
+
 		switch item.Type {
 		case "project":
 			data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
@@ -175,16 +179,17 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 				Deleted:       sql.NullBool{Bool: item.Deleted, Valid: true},
 			})
 			if err == nil {
+				c.Logger().Infof("Project upserted successfully: clientID=%s, version=%d", item.ClientID, version.Int64)
 				item.SyncVersion = version.Int64
 				updated = append(updated, item)
 			} else {
-				c.Logger().Error("upsert project error:", err)
+				c.Logger().Errorf("upsert project error for clientID=%s: %v", item.ClientID, err)
 			}
 
 		case "task":
 			contentData, err := base64.StdEncoding.DecodeString(item.EncryptedContent)
 			if err != nil {
-				c.Logger().Error("base64 decode error:", err)
+				c.Logger().Errorf("base64 decode error for task %s: %v", item.ClientID, err)
 				continue
 			}
 
@@ -192,6 +197,9 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 			if status == "" {
 				status = "process"
 			}
+
+			c.Logger().Infof("Upserting task: clientID=%s, projectID=%s, status=%s, priority=%d",
+				item.ClientID, item.ProjectID, status, item.Priority)
 
 			version, err := s.queries.UpsertTask(c.Request().Context(), database.UpsertTaskParams{
 				UserID:           userUUID,
@@ -204,15 +212,16 @@ func (s *Server) handleSyncPush(c echo.Context) error {
 				Deleted:          sql.NullBool{Bool: item.Deleted, Valid: true},
 			})
 			if err == nil {
+				c.Logger().Infof("Task upserted successfully: clientID=%s, version=%d", item.ClientID, version.Int64)
 				item.SyncVersion = version.Int64
 				updated = append(updated, item)
 			} else {
-				c.Logger().Error("upsert task error:", err)
+				c.Logger().Errorf("upsert task error for clientID=%s: %v", item.ClientID, err)
 			}
 		}
 	}
 
-	c.Logger().Infof("Sync push for user %s: %d items updated", userID, len(updated))
+	c.Logger().Infof("Sync push for user %s: %d items updated out of %d received", userID, len(updated), len(req.Items))
 
 	return c.JSON(http.StatusOK, SyncPushResponse{Updated: updated})
 }

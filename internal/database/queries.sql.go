@@ -131,7 +131,7 @@ func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) er
 
 const deleteTask = `-- name: DeleteTask :exec
 UPDATE tasks 
-SET deleted_at = ?, updated_at = ?, sync_version = sync_version + 1
+SET deleted_at = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?
 `
 
@@ -399,7 +399,7 @@ func (q *Queries) UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjec
 
 const updateTask = `-- name: UpdateTask :exec
 UPDATE tasks
-SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = sync_version + 1
+SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?
 `
 
@@ -430,7 +430,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
 UPDATE tasks
-SET status = ?, updated_at = ?, sync_version = sync_version + 1
+SET status = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?
 `
 

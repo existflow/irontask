@@ -125,9 +125,15 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	logger.Debug("Starting push changes")
 	var items []SyncItem
 
-	// Get projects that need syncing
-	projects, _ := dbConn.GetProjectsToSync(context.Background(), sql.NullInt64{Int64: 0, Valid: true})
+	// Get projects that need syncing (changed since last sync)
+	projects, _ := dbConn.GetProjectsToSync(context.Background(), sql.NullInt64{Int64: c.config.LastSync, Valid: true})
+
+	logger.Debug("Found projects to sync", logger.F("count", len(projects)), logger.F("lastSync", c.config.LastSync),
+		logger.F("projects", projects),
+	)
 	for _, p := range projects {
+		logger.Debug("Processing project for sync", logger.F("id", p.ID), logger.F("name", p.Name))
+		// Prepare data (including legacy color info)
 		color := ""
 		if p.Color.Valid {
 			color = p.Color.String
@@ -148,8 +154,8 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 		})
 	}
 
-	// Get tasks that need syncing
-	tasks, _ := dbConn.GetTasksToSync(context.Background(), sql.NullInt64{Int64: 0, Valid: true})
+	// Get tasks that need syncing (changed since last sync)
+	tasks, _ := dbConn.GetTasksToSync(context.Background(), sql.NullInt64{Int64: c.config.LastSync, Valid: true})
 	for _, t := range tasks {
 		dueDate := ""
 		if t.DueDate.Valid {

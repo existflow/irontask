@@ -37,18 +37,19 @@ ORDER BY priority ASC, due_date ASC NULLS LAST, created_at DESC;
 
 -- name: UpdateTask :exec
 UPDATE tasks
-SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = sync_version + 1
+SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?;
 
 -- name: UpdateTaskStatus :exec
 UPDATE tasks
-SET status = ?, updated_at = ?, sync_version = sync_version + 1
+SET status = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?;
 
 -- name: DeleteTask :exec
 UPDATE tasks 
-SET deleted_at = ?, updated_at = ?, sync_version = sync_version + 1
+SET deleted_at = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
 WHERE id = ?;
+
 
 -- name: CountTasks :one
 SELECT 
