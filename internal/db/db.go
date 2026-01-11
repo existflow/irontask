@@ -17,13 +17,13 @@ type DB struct {
 	*database.Queries
 }
 
-// DefaultDBPath returns the default database path (~/.irontask/tasks.db)
+// DefaultDBPath returns the default database path (~/.irontask/tasks.sqlite)
 func DefaultDBPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return filepath.Join(home, ".irontask", "tasks.db"), nil
+	return filepath.Join(home, ".irontask", "tasks.sqlite"), nil
 }
 
 // Open opens or creates the SQLite database

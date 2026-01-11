@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/existflow/irontask/internal/logger"
 	"github.com/existflow/irontask/server/database"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -49,15 +51,40 @@ func (s *Server) setupEcho() {
 	e := echo.New()
 	e.HideBanner = true
 
-	// Middleware
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogStatus: true,
-		LogURI:    true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			fmt.Printf("REQUEST: %s %s status=%d\n", v.URI, v.Method, v.Status)
-			return nil
-		},
-	}))
+	// Custom logging middleware
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			start := time.Now()
+			req := c.Request()
+
+			// Log request
+			logger.Info("HTTP Request",
+				logger.F("method", req.Method),
+				logger.F("uri", req.RequestURI),
+				logger.F("remote", req.RemoteAddr))
+
+			// Process request
+			err := next(c)
+
+			// Log response
+			res := c.Response()
+			duration := time.Since(start)
+
+			logger.Info("HTTP Response",
+				logger.F("method", req.Method),
+				logger.F("uri", req.RequestURI),
+				logger.F("status", res.Status),
+				logger.F("size", res.Size),
+				logger.F("duration", duration.String()))
+
+			// Also print to console for visibility
+			fmt.Printf("REQUEST: %s %s  status=%d  size=%d  duration=%s\n",
+				req.Method, req.RequestURI, res.Status, res.Size, duration)
+
+			return err
+		}
+	})
+
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(middleware.CORS())

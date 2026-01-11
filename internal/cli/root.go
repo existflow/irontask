@@ -25,18 +25,33 @@ and cross-device sync capabilities.
 
 Run 'task' without arguments to launch the interactive TUI.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Initialize logger
-		cfg := config.DefaultConfig()
+		// Load config from file (or defaults if not exists)
+		cfg, err := config.Load()
+		if err != nil {
+			logger.Warn("Failed to load config, using defaults", logger.F("error", err))
+			cfg = config.DefaultConfig()
+		}
 
 		// Override with CLI flags if provided
+		configChanged := false
 		if cmd.Flags().Changed("log-level") {
 			cfg.LogLevel = logLevel
+			configChanged = true
 		}
 		if cmd.Flags().Changed("log-file") {
 			cfg.LogFile = logFile
+			configChanged = true
 		}
 		if cmd.Flags().Changed("log-console") {
 			cfg.LogConsole = logConsole
+			configChanged = true
+		}
+
+		// Save config if changed via CLI flags
+		if configChanged {
+			if err := cfg.Save(); err != nil {
+				logger.Warn("Failed to save config", logger.F("error", err))
+			}
 		}
 
 		logConfig := logger.Config{
@@ -55,6 +70,7 @@ Run 'task' without arguments to launch the interactive TUI.`,
 		logger.Info("IronTask started", logger.F("command", cmd.Name()))
 		return nil
 	},
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Launch TUI
 		database, err := db.OpenDefault()
