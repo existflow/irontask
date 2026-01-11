@@ -13,6 +13,8 @@ interface AppState {
   // Data
   tasks: Task[]
   projects: Project[]
+  archivedTasks: Task[]
+  archivedProjects: Project[]
   syncVersion: number
 
   // UI State
@@ -44,16 +46,20 @@ interface AppState {
   addTask: (content: string) => Promise<void>
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   toggleTaskDone: (taskId: string) => Promise<void>
-  deleteTask: (taskId: string) => Promise<void>
+  archiveTask: (taskId: string) => Promise<void>
+  restoreTask: (taskId: string) => Promise<void>
   addProject: (name: string) => Promise<void>
   updateProject: (projectId: string, name: string) => Promise<void>
-  deleteProject: (projectId: string) => Promise<boolean>
+  archiveProject: (projectId: string) => Promise<boolean>
+  restoreProject: (projectId: string) => Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   tasks: [],
   projects: [],
+  archivedTasks: [],
+  archivedProjects: [],
   syncVersion: 0,
   selectedProject: "inbox",
   loading: true,
@@ -95,14 +101,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sinceVersion = fullSync ? 0 : get().syncVersion
       const response = await syncPull(sinceVersion)
 
-      const decryptedTasks: Task[] = []
-      const decryptedProjects: Project[] = []
+      const activeTasks: Task[] = []
+      const archivedTasks: Task[] = []
+      const activeProjects: Project[] = []
+      const archivedProjects: Project[] = []
 
       for (const item of response.items) {
         try {
           if (item.type === "task" && item.encrypted_content) {
             const content = await decryptTaskContent(key, item.encrypted_content)
-            decryptedTasks.push({
+            const task: Task = {
               id: item.client_id,
               project_id: item.project_id || "inbox",
               content: content.content,
@@ -111,7 +119,12 @@ export const useAppStore = create<AppState>((set, get) => ({
               due_date: item.due_date,
               sync_version: item.sync_version,
               deleted: item.deleted,
-            })
+            }
+            if (item.deleted) {
+              archivedTasks.push(task)
+            } else {
+              activeTasks.push(task)
+            }
           } else if (item.type === "project") {
             let projectName = item.name || "Unnamed"
             let projectSlug = item.slug || item.client_id
@@ -128,14 +141,19 @@ export const useAppStore = create<AppState>((set, get) => ({
               }
             }
 
-            decryptedProjects.push({
+            const project: Project = {
               id: item.client_id,
               slug: projectSlug,
               name: projectName,
               color: projectColor,
               sync_version: item.sync_version,
               deleted: item.deleted,
-            })
+            }
+            if (item.deleted) {
+              archivedProjects.push(project)
+            } else {
+              activeProjects.push(project)
+            }
           }
         } catch (err) {
           console.error("Decrypt error:", item.client_id, err)
@@ -143,9 +161,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       if (fullSync) {
-        const projectsWithInbox = decryptedProjects.filter((p) => !p.deleted)
-        if (!projectsWithInbox.find((p) => p.id === "inbox")) {
-          projectsWithInbox.unshift({
+        if (!activeProjects.find((p) => p.id === "inbox")) {
+          activeProjects.unshift({
             id: "inbox",
             slug: "inbox",
             name: "Inbox",
@@ -155,23 +172,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
 
         set({
-          tasks: decryptedTasks.filter((t) => !t.deleted),
-          projects: projectsWithInbox,
+          tasks: activeTasks,
+          archivedTasks,
+          projects: activeProjects,
+          archivedProjects,
           syncVersion: response.sync_version,
           loading: false,
         })
       } else {
-        const { tasks: prevTasks, projects: prevProjects } = get()
+        const { tasks: prevTasks, projects: prevProjects, archivedTasks: prevArchived, archivedProjects: prevArchivedProjects } = get()
 
+        // Merge active tasks
         const mergedTasks = [...prevTasks]
-        for (const task of decryptedTasks) {
+        for (const task of activeTasks) {
           const idx = mergedTasks.findIndex((t) => t.id === task.id)
           if (idx >= 0) mergedTasks[idx] = task
           else mergedTasks.push(task)
         }
+        // Remove any that became archived
+        const finalTasks = mergedTasks.filter((t) => !archivedTasks.find((a) => a.id === t.id))
 
+        // Merge archived tasks
+        const mergedArchived = [...prevArchived]
+        for (const task of archivedTasks) {
+          const idx = mergedArchived.findIndex((t) => t.id === task.id)
+          if (idx >= 0) mergedArchived[idx] = task
+          else mergedArchived.push(task)
+        }
+
+        // Merge active projects
         const mergedProjects = [...prevProjects]
-        for (const proj of decryptedProjects) {
+        for (const proj of activeProjects) {
           const idx = mergedProjects.findIndex((p) => p.id === proj.id)
           if (idx >= 0) mergedProjects[idx] = proj
           else mergedProjects.push(proj)
@@ -185,10 +216,21 @@ export const useAppStore = create<AppState>((set, get) => ({
             deleted: false,
           })
         }
+        const finalProjects = mergedProjects.filter((p) => !archivedProjects.find((a) => a.id === p.id))
+
+        // Merge archived projects
+        const mergedArchivedProjects = [...prevArchivedProjects]
+        for (const proj of archivedProjects) {
+          const idx = mergedArchivedProjects.findIndex((p) => p.id === proj.id)
+          if (idx >= 0) mergedArchivedProjects[idx] = proj
+          else mergedArchivedProjects.push(proj)
+        }
 
         set({
-          tasks: mergedTasks.filter((t) => !t.deleted),
-          projects: mergedProjects.filter((p) => !p.deleted),
+          tasks: finalTasks,
+          archivedTasks: mergedArchived,
+          projects: finalProjects,
+          archivedProjects: mergedArchivedProjects,
           syncVersion: response.sync_version,
           loading: false,
         })
@@ -219,7 +261,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       deleted: false,
     }
 
-    // Optimistic update
     set({ tasks: [...tasks, newTask], newTaskContent: "" })
 
     try {
@@ -248,7 +289,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch {
-      // Rollback
       set({ tasks: get().tasks.filter((t) => t.id !== taskId) })
     }
   },
@@ -264,7 +304,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const updatedTask = { ...task, ...updates }
 
-    // Optimistic update
     set({
       tasks: tasks.map((t) => (t.id === taskId ? updatedTask : t)),
       editingTaskId: null,
@@ -297,8 +336,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch {
-      // Rollback
-      set({ tasks: tasks })
+      set({ tasks })
     }
   },
 
@@ -312,17 +350,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().updateTask(taskId, { status: newStatus })
   },
 
-  // Delete task
-  deleteTask: async (taskId) => {
-    const { tasks } = get()
+  // Archive task (soft delete)
+  archiveTask: async (taskId) => {
+    const { tasks, archivedTasks } = get()
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
 
     const key = await getStoredKey()
     if (!key) return
 
-    // Optimistic update
-    set({ tasks: tasks.filter((t) => t.id !== taskId) })
+    const archivedTask = { ...task, deleted: true }
+
+    // Move to archived
+    set({
+      tasks: tasks.filter((t) => t.id !== taskId),
+      archivedTasks: [...archivedTasks, archivedTask],
+    })
 
     try {
       const encryptedContent = await encryptTaskContent(key, task.content)
@@ -342,7 +385,52 @@ export const useAppStore = create<AppState>((set, get) => ({
       await syncPush([syncItem])
     } catch {
       // Rollback
-      set({ tasks: [...get().tasks, task] })
+      set({
+        tasks: [...get().tasks, task],
+        archivedTasks: get().archivedTasks.filter((t) => t.id !== taskId),
+      })
+    }
+  },
+
+  // Restore task from archive
+  restoreTask: async (taskId) => {
+    const { tasks, archivedTasks } = get()
+    const task = archivedTasks.find((t) => t.id === taskId)
+    if (!task) return
+
+    const key = await getStoredKey()
+    if (!key) return
+
+    const restoredTask = { ...task, deleted: false }
+
+    // Move back to active
+    set({
+      archivedTasks: archivedTasks.filter((t) => t.id !== taskId),
+      tasks: [...tasks, restoredTask],
+    })
+
+    try {
+      const encryptedContent = await encryptTaskContent(key, task.content)
+      const syncItem: SyncItem = {
+        id: taskId,
+        client_id: taskId,
+        type: "task",
+        project_id: task.project_id,
+        encrypted_content: encryptedContent,
+        status: task.status,
+        priority: task.priority,
+        sync_version: task.sync_version,
+        deleted: false,
+        client_updated_at: new Date().toISOString(),
+      }
+
+      await syncPush([syncItem])
+    } catch {
+      // Rollback
+      set({
+        archivedTasks: [...get().archivedTasks, task],
+        tasks: get().tasks.filter((t) => t.id !== taskId),
+      })
     }
   },
 
@@ -361,7 +449,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       deleted: false,
     }
 
-    // Optimistic update
     set({
       projects: [...projects, newProject],
       showNewProject: false,
@@ -397,7 +484,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch {
-      // Rollback
       set({
         projects: get().projects.filter((p) => p.id !== projectId),
         selectedProject: "inbox",
@@ -414,7 +500,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const key = await getStoredKey()
     if (!key) return
 
-    // Optimistic update
     set({
       projects: projects.map((p) =>
         p.id === projectId ? { ...p, name } : p
@@ -452,31 +537,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       }
     } catch {
-      // Rollback
       set({ projects })
     }
   },
 
-  // Delete project
-  deleteProject: async (projectId) => {
-    const { projects, tasks, selectedProject } = get()
+  // Archive project (soft delete)
+  archiveProject: async (projectId) => {
+    const { projects, tasks, selectedProject, archivedProjects } = get()
     if (projectId === "inbox") return false
 
     const project = projects.find((p) => p.id === projectId)
     if (!project) return false
 
-    // Check for tasks
+    // Check for active tasks
     const projectTasks = tasks.filter((t) => t.project_id === projectId)
     if (projectTasks.length > 0) {
-      return false
+      return false // Can't archive project with active tasks
     }
 
     const key = await getStoredKey()
     if (!key) return false
 
-    // Optimistic update
+    const archivedProject = { ...project, deleted: true }
+
     set({
       projects: projects.filter((p) => p.id !== projectId),
+      archivedProjects: [...archivedProjects, archivedProject],
       selectedProject: selectedProject === projectId ? "inbox" : selectedProject,
     })
 
@@ -501,9 +587,54 @@ export const useAppStore = create<AppState>((set, get) => ({
       await syncPush([syncItem])
       return true
     } catch {
-      // Rollback
-      set({ projects: [...get().projects, project] })
+      set({
+        projects: [...get().projects, project],
+        archivedProjects: get().archivedProjects.filter((p) => p.id !== projectId),
+      })
       return false
+    }
+  },
+
+  // Restore project from archive
+  restoreProject: async (projectId) => {
+    const { projects, archivedProjects } = get()
+    const project = archivedProjects.find((p) => p.id === projectId)
+    if (!project) return
+
+    const key = await getStoredKey()
+    if (!key) return
+
+    const restoredProject = { ...project, deleted: false }
+
+    set({
+      archivedProjects: archivedProjects.filter((p) => p.id !== projectId),
+      projects: [...projects, restoredProject],
+    })
+
+    try {
+      const encryptedData = await encryptProjectData(key, {
+        name: project.name,
+        slug: project.slug,
+        color: project.color,
+      })
+      const syncItem: SyncItem = {
+        id: projectId,
+        client_id: projectId,
+        type: "project",
+        slug: project.slug,
+        name: project.name,
+        encrypted_data: encryptedData,
+        sync_version: project.sync_version,
+        deleted: false,
+        client_updated_at: new Date().toISOString(),
+      }
+
+      await syncPush([syncItem])
+    } catch {
+      set({
+        archivedProjects: [...get().archivedProjects, project],
+        projects: get().projects.filter((p) => p.id !== projectId),
+      })
     }
   },
 }))
@@ -534,4 +665,12 @@ export const useCurrentProject = () => {
 export const useProjectTaskCount = (projectId: string) => {
   const tasks = useAppStore((state) => state.tasks)
   return tasks.filter((t) => t.project_id === projectId && t.status !== "done").length
+}
+
+export const useArchivedTasks = () => {
+  return useAppStore((state) => state.archivedTasks)
+}
+
+export const useArchivedProjects = () => {
+  return useAppStore((state) => state.archivedProjects)
 }

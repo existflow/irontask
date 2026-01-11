@@ -20,16 +20,16 @@ import {
   Inbox,
   FolderOpen,
   LogOut,
-  Trash2,
+  Archive,
   Pencil,
   CheckCircle2,
   Circle,
-  MoreHorizontal,
 } from "lucide-react"
+import Link from "next/link"
 
 // Task Card Component
 function TaskCard({ task }: { task: { id: string; content: string; status: string; priority: number } }) {
-  const { toggleTaskDone, deleteTask, setEditingTask, editingTaskId, editTaskContent, updateTask } = useAppStore()
+  const { toggleTaskDone, archiveTask, setEditingTask, editingTaskId, editTaskContent, updateTask } = useAppStore()
   const isEditing = editingTaskId === task.id
   const isDone = task.status === "done"
 
@@ -108,10 +108,11 @@ function TaskCard({ task }: { task: { id: string; content: string; status: strin
             <Pencil className="w-4 h-4" />
           </button>
           <button
-            onClick={() => deleteTask(task.id)}
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+            onClick={() => archiveTask(task.id)}
+            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg"
+            title="Archive task"
           >
-            <Trash2 className="w-4 h-4" />
+            <Archive className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -128,7 +129,7 @@ function ProjectItem({ project }: { project: { id: string; name: string } }) {
     editProjectName,
     setEditingProject,
     updateProject,
-    deleteProject,
+    archiveProject,
     tasks,
   } = useAppStore()
 
@@ -203,14 +204,13 @@ function ProjectItem({ project }: { project: { id: string; name: string } }) {
           <button
             onClick={(e) => {
               e.stopPropagation()
-              const success = deleteProject(project.id)
-              if (!success) {
-                toast.error("Delete tasks in this project first")
-              }
+              archiveProject(project.id)
+              toast.success("Project archived")
             }}
-            className="p-1 text-gray-400 hover:text-red-500 rounded"
+            className="p-1 text-gray-400 hover:text-orange-500 rounded"
+            title="Archive project"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Archive className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -362,6 +362,15 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
+
+            {/* Archive Link */}
+            <Link
+              href="/archive"
+              className="flex items-center gap-2 mt-3 px-3 py-2.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-colors"
+            >
+              <Archive className="w-5 h-5" />
+              <span className="font-medium">Archive</span>
+            </Link>
           </div>
         </aside>
 
