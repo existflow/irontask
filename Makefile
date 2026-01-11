@@ -19,6 +19,10 @@ run: build-cli
 dev: build-server
 	DATABASE_URL="postgres://irontask:irontask@localhost:5432/irontask?sslmode=disable" ./irontask-server
 
+# Run Web UI
+run-ui:
+	cd web-ui && npm run dev
+
 # Run tests
 test:
 	go test -v ./...
