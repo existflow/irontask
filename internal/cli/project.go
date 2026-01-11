@@ -9,6 +9,7 @@ import (
 
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/logger"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -57,20 +58,25 @@ func init() {
 }
 
 func runProjectNew(cmd *cobra.Command, args []string) error {
+	name := args[0]
+	logger.Info("Creating new project", logger.F("name", name), logger.F("color", projectColor))
+
 	dbConn, err := db.OpenDefault()
 	if err != nil {
+		logger.Error("Failed to open database", logger.F("error", err))
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer func() {
 		_ = dbConn.Close()
 	}()
 
-	name := args[0]
+	name = args[0]
 	slug := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 	id := slug
 
 	// Check if ID already exists, if so use UUID
 	if existing, _ := dbConn.GetProject(context.Background(), id); existing.ID != "" {
+		logger.Debug("Project ID already exists, generating UUID", logger.F("existingID", id))
 		id = uuid.New().String()[:8]
 	}
 
@@ -84,16 +90,24 @@ func runProjectNew(cmd *cobra.Command, args []string) error {
 		UpdatedAt:   now,
 		SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
 	}); err != nil {
+		logger.Error("Failed to create project", logger.F("error", err), logger.F("name", name))
 		return fmt.Errorf("failed to create project: %w", err)
 	}
 
+	logger.Info("Project created successfully",
+		logger.F("id", id),
+		logger.F("slug", slug),
+		logger.F("name", name))
 	fmt.Printf("[OK] Created project: %s (id: %s, slug: %s)\n", name, id, slug)
 	return nil
 }
 
 func runProjectList(cmd *cobra.Command, args []string) error {
+	logger.Debug("Listing projects")
+
 	database, err := db.OpenDefault()
 	if err != nil {
+		logger.Error("Failed to open database", logger.F("error", err))
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer func() {
@@ -102,8 +116,11 @@ func runProjectList(cmd *cobra.Command, args []string) error {
 
 	projects, err := database.ListProjects(context.Background())
 	if err != nil {
+		logger.Error("Failed to list projects", logger.F("error", err))
 		return fmt.Errorf("failed to list projects: %w", err)
 	}
+
+	logger.Info("Projects listed", logger.F("count", len(projects)))
 
 	if len(projects) == 0 {
 		fmt.Println("No projects found.")
@@ -130,22 +147,28 @@ func runProjectList(cmd *cobra.Command, args []string) error {
 }
 
 func runProjectDelete(cmd *cobra.Command, args []string) error {
+	projectID := args[0]
+	logger.Info("Deleting project", logger.F("projectID", projectID))
+
 	dbConn, err := db.OpenDefault()
 	if err != nil {
+		logger.Error("Failed to open database", logger.F("error", err))
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer func() {
 		_ = dbConn.Close()
 	}()
 
-	projectID := args[0]
+	projectID = args[0]
 
 	if projectID == "inbox" {
+		logger.Warn("Attempt to delete inbox project blocked", logger.F("projectID", projectID))
 		return fmt.Errorf("cannot delete the Inbox project")
 	}
 
 	project, err := dbConn.GetProject(context.Background(), projectID)
 	if err != nil {
+		logger.Error("Project not found", logger.F("projectID", projectID), logger.F("error", err))
 		return fmt.Errorf("project not found: %s", projectID)
 	}
 
@@ -153,9 +176,11 @@ func runProjectDelete(cmd *cobra.Command, args []string) error {
 		ID:        projectID,
 		DeletedAt: sql.NullString{String: time.Now().Format(time.RFC3339), Valid: true},
 	}); err != nil {
+		logger.Error("Failed to delete project", logger.F("projectID", projectID), logger.F("error", err))
 		return fmt.Errorf("failed to delete project: %w", err)
 	}
 
+	logger.Info("Project deleted successfully", logger.F("projectID", projectID), logger.F("name", project.Name))
 	fmt.Printf("Deleted project: %s\n", project.Name)
 	return nil
 }

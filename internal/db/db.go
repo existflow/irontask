@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/existflow/irontask/internal/database"
+	"github.com/existflow/irontask/internal/logger"
 	_ "modernc.org/sqlite"
 )
 
@@ -27,27 +28,35 @@ func DefaultDBPath() (string, error) {
 
 // Open opens or creates the SQLite database
 func Open(dbPath string) (*DB, error) {
+	logger.Info("Opening database", logger.F("path", dbPath))
+
 	// Ensure directory exists
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		logger.Error("Failed to create database directory", logger.F("dir", dir), logger.F("error", err))
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
 
 	// Open database
 	sqlDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
+		logger.Error("Failed to open database", logger.F("path", dbPath), logger.F("error", err))
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Test connection
 	if err := sqlDB.Ping(); err != nil {
+		logger.Error("Failed to connect to database", logger.F("error", err))
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	// Enable foreign keys
 	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		logger.Error("Failed to enable foreign keys", logger.F("error", err))
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
+
+	logger.Debug("Database connection established")
 
 	db := &DB{
 		DB:      sqlDB,
@@ -55,10 +64,13 @@ func Open(dbPath string) (*DB, error) {
 	}
 
 	// Run migrations
+	logger.Info("Running database migrations")
 	if err := db.migrate(); err != nil {
+		logger.Error("Failed to run migrations", logger.F("error", err))
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
+	logger.Info("Database opened successfully")
 	return db, nil
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/logger"
 )
 
 // SyncItem represents an item to sync
@@ -121,6 +122,7 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 
 // pushChanges sends local changes to server
 func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
+	logger.Debug("Starting push changes")
 	var items []SyncItem
 
 	// Get projects that need syncing
@@ -177,34 +179,52 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	}
 
 	if len(items) == 0 {
+		logger.Debug("No items to push")
 		return 0, nil
 	}
+
+	logger.Info("Pushing changes to server", logger.F("itemCount", len(items)))
 
 	// Send to server
 	body, _ := json.Marshal(map[string]interface{}{
 		"items": items,
 	})
 
-	req, _ := http.NewRequest("POST", c.config.ServerURL+"/api/v1/sync", bytes.NewReader(body))
+	url := c.config.ServerURL + "/api/v1/sync"
+	logger.Debug("HTTP Request",
+		logger.F("method", "POST"),
+		logger.F("url", url),
+		logger.F("bodySize", len(body)))
+
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.config.Token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		logger.Error("HTTP request failed", logger.F("error", err), logger.F("url", url))
 		return 0, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
+	logger.Debug("HTTP Response",
+		logger.F("status", resp.StatusCode),
+		logger.F("statusText", resp.Status))
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		logger.Error("Push failed",
+			logger.F("status", resp.StatusCode),
+			logger.F("response", string(respBody)))
 		return 0, fmt.Errorf("server error: %s", string(respBody))
 	}
 
 	var result SyncPushResponse
 	_ = json.NewDecoder(resp.Body).Decode(&result)
 
+	logger.Info("Push completed", logger.F("updated", len(result.Updated)))
 	return len(result.Updated), nil
 }
 
@@ -212,28 +232,50 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 	url := fmt.Sprintf("%s/api/v1/sync?since=%d", c.config.ServerURL, c.config.LastSync)
 
+	logger.Debug("Pulling changes from server", logger.F("since", c.config.LastSync))
+	logger.Debug("HTTP Request",
+		logger.F("method", "GET"),
+		logger.F("url", url))
+
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+c.config.Token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		logger.Error("HTTP request failed", logger.F("error", err), logger.F("url", url))
 		return 0, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
+	logger.Debug("HTTP Response",
+		logger.F("status", resp.StatusCode),
+		logger.F("statusText", resp.Status))
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		logger.Error("Pull failed",
+			logger.F("status", resp.StatusCode),
+			logger.F("response", string(respBody)))
 		return 0, fmt.Errorf("server error: %s", string(respBody))
 	}
 
 	var result SyncPullResponse
 	_ = json.NewDecoder(resp.Body).Decode(&result)
 
+	logger.Info("Received items from server",
+		logger.F("itemCount", len(result.Items)),
+		logger.F("syncVersion", result.SyncVersion))
+
 	// Apply remote changes
 	ctx := context.Background()
 	for _, item := range result.Items {
+		logger.Debug("Processing sync item",
+			logger.F("type", item.Type),
+			logger.F("clientID", item.ClientID),
+			logger.F("deleted", item.Deleted))
+
 		switch item.Type {
 		case "project":
 			// Use name directly from item, encrypted_data contains legacy color info
@@ -263,6 +305,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 			_, err := dbConn.GetProject(ctx, item.ClientID)
 			if err != nil {
 				// Not found, create
+				logger.Debug("Creating project from sync", logger.F("id", item.ClientID), logger.F("name", name))
 				_ = dbConn.CreateProject(ctx, database.CreateProjectParams{
 					ID:        item.ClientID,
 					Slug:      slug,
@@ -271,6 +314,8 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
+			} else {
+				logger.Debug("Project already exists, skipping", logger.F("id", item.ClientID))
 			}
 
 		case "task":
@@ -296,6 +341,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 			tExisting, err := dbConn.GetTask(ctx, item.ClientID)
 			if err != nil {
 				// Create
+				logger.Debug("Creating task from sync", logger.F("id", item.ClientID), logger.F("content", content))
 				_ = dbConn.CreateTask(ctx, database.CreateTaskParams{
 					ID:        item.ClientID,
 					ProjectID: item.ProjectID,
@@ -308,6 +354,7 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				})
 			} else {
 				// Update
+				logger.Debug("Updating task from sync", logger.F("id", item.ClientID), logger.F("content", content))
 				_ = dbConn.UpdateTask(ctx, database.UpdateTaskParams{
 					ID:        tExisting.ID,
 					ProjectID: item.ProjectID,
@@ -323,9 +370,13 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 
 	// Update last sync version
 	if result.SyncVersion > c.config.LastSync {
+		logger.Debug("Updating last sync version",
+			logger.F("old", c.config.LastSync),
+			logger.F("new", result.SyncVersion))
 		c.config.LastSync = result.SyncVersion
 		_ = c.saveConfig()
 	}
 
+	logger.Info("Pull completed", logger.F("itemsProcessed", len(result.Items)))
 	return len(result.Items), nil
 }

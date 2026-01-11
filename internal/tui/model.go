@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/db"
+	"github.com/existflow/irontask/internal/logger"
 	"github.com/existflow/irontask/internal/sync"
 )
 
@@ -68,6 +69,8 @@ type Model struct {
 
 // NewModel creates a new TUI model
 func NewModel(database *db.DB) Model {
+	logger.Info("Initializing TUI model")
+
 	ti := textinput.New()
 	ti.Placeholder = "Enter task..."
 	ti.CharLimit = 256
@@ -85,11 +88,13 @@ func NewModel(database *db.DB) Model {
 	// Initialize sync
 	sClient, err := sync.NewClient()
 	if err == nil && sClient.IsLoggedIn() {
+		logger.Info("Sync client initialized and logged in")
 		m.syncClient = sClient
 		m.autoSync = sync.NewAutoSync(sClient, database)
 
 		// Set callback to signal UI refresh when remote changes are pulled
 		m.autoSync.SetOnPull(func() {
+			logger.Debug("Auto-sync pull callback triggered")
 			// Non-blocking send to trigger UI refresh
 			select {
 			case m.syncRefreshChan <- struct{}{}:
@@ -99,9 +104,16 @@ func NewModel(database *db.DB) Model {
 
 		// Trigger initial sync
 		m.autoSync.TriggerSync()
+	} else if err != nil {
+		logger.Debug("Sync client not initialized", logger.F("error", err))
+	} else {
+		logger.Debug("Sync client not logged in")
 	}
 
 	m.loadData()
+	logger.Debug("TUI model initialized",
+		logger.F("projects", len(m.projects)),
+		logger.F("tasks", len(m.tasks)))
 	return m
 }
 
