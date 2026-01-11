@@ -18,7 +18,8 @@ type AutoSync struct {
 	syncing      bool // Prevents concurrent sync operations
 	mu           sync.Mutex
 	stopCh       chan struct{}
-	onPull       func() // Callback when remote changes are pulled
+	onPull       func()               // Callback when remote changes are pulled
+	onConflict   func([]ConflictItem) // Callback when conflicts are detected
 	lastError    error
 }
 
@@ -47,6 +48,13 @@ func (a *AutoSync) SetOnPull(callback func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.onPull = callback
+}
+
+// SetOnConflict sets a callback function to be called when conflicts are detected
+func (a *AutoSync) SetOnConflict(callback func([]ConflictItem)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.onConflict = callback
 }
 
 // pollLoop periodically checks for remote changes
@@ -112,11 +120,23 @@ func (a *AutoSync) doSync() {
 	if result.Pulled > 0 {
 		logger.Debug("Remote changes pulled, triggering callback")
 		a.mu.Lock()
-		callback := a.onPull
+		pullCallback := a.onPull
 		a.mu.Unlock()
 
-		if callback != nil {
-			callback()
+		if pullCallback != nil {
+			pullCallback()
+		}
+	}
+
+	// If we have conflicts, notify the callback
+	if len(result.Conflicts) > 0 {
+		logger.Info("Sync conflicts detected, triggering callback", logger.F("count", len(result.Conflicts)))
+		a.mu.Lock()
+		conflictCallback := a.onConflict
+		a.mu.Unlock()
+
+		if conflictCallback != nil {
+			conflictCallback(result.Conflicts)
 		}
 	}
 }

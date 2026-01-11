@@ -30,6 +30,7 @@ const (
 	ModeEditTask
 	ModeFilter
 	ModeHelp
+	ModeConflict
 )
 
 // Model is the main TUI model
@@ -40,9 +41,11 @@ type Model struct {
 	allTasks []database.Task // Original unfiltered list
 
 	// Sync
-	syncClient      *sync.Client
-	autoSync        *sync.AutoSync
-	syncRefreshChan chan struct{} // Channel to trigger UI refresh on remote sync
+	syncClient       *sync.Client
+	autoSync         *sync.AutoSync
+	syncRefreshChan  chan struct{}            // Channel to trigger UI refresh on remote sync
+	syncConflictChan chan []sync.ConflictItem // Channel to receive conflicts
+	conflicts        []sync.ConflictItem      // Current conflicts to resolve
 
 	// UI state
 	width      int
@@ -77,12 +80,13 @@ func NewModel(database *db.DB) Model {
 	ti.Width = 50
 
 	m := Model{
-		db:              database,
-		pane:            PaneSidebar,
-		mode:            ModeNormal,
-		input:           ti,
-		recentlyDone:    make(map[string]time.Time),
-		syncRefreshChan: make(chan struct{}, 1), // Buffered to avoid blocking
+		db:               database,
+		pane:             PaneSidebar,
+		mode:             ModeNormal,
+		input:            ti,
+		recentlyDone:     make(map[string]time.Time),
+		syncRefreshChan:  make(chan struct{}, 1),            // Buffered to avoid blocking
+		syncConflictChan: make(chan []sync.ConflictItem, 1), // Buffered
 	}
 
 	// Initialize sync
@@ -98,6 +102,15 @@ func NewModel(database *db.DB) Model {
 			// Non-blocking send to trigger UI refresh
 			select {
 			case m.syncRefreshChan <- struct{}{}:
+			default:
+			}
+		})
+
+		// Set callback to signal UI when conflicts occur
+		m.autoSync.SetOnConflict(func(conflicts []sync.ConflictItem) {
+			logger.Info("Auto-sync conflict callback triggered")
+			select {
+			case m.syncConflictChan <- conflicts:
 			default:
 			}
 		})

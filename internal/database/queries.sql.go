@@ -49,21 +49,21 @@ func (q *Queries) CountTasks(ctx context.Context, projectID string) (CountTasksR
 }
 
 const createProject = `-- name: CreateProject :exec
-INSERT INTO projects (id, slug, name, color, archived, created_at, updated_at, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO projects (id, slug, name, color, archived, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateProjectParams struct {
-	ID          string         `json:"id"`
-	Slug        string         `json:"slug"`
-	Name        string         `json:"name"`
-	Color       sql.NullString `json:"color"`
-	Archived    bool           `json:"archived"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
-	SyncVersion sql.NullInt64  `json:"sync_version"`
+	ID        string         `json:"id"`
+	Slug      string         `json:"slug"`
+	Name      string         `json:"name"`
+	Color     sql.NullString `json:"color"`
+	Archived  bool           `json:"archived"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
+// sync_version is NULL for new items, will be set after successful push
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) error {
 	_, err := q.db.ExecContext(ctx, createProject,
 		arg.ID,
@@ -73,29 +73,28 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) er
 		arg.Archived,
 		arg.CreatedAt,
 		arg.UpdatedAt,
-		arg.SyncVersion,
 	)
 	return err
 }
 
 const createTask = `-- name: CreateTask :exec
-INSERT INTO tasks (id, project_id, content, status, priority, due_date, tags, created_at, updated_at, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO tasks (id, project_id, content, status, priority, due_date, tags, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateTaskParams struct {
-	ID          string         `json:"id"`
-	ProjectID   string         `json:"project_id"`
-	Content     string         `json:"content"`
-	Status      sql.NullString `json:"status"`
-	Priority    int            `json:"priority"`
-	DueDate     sql.NullString `json:"due_date"`
-	Tags        sql.NullString `json:"tags"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
-	SyncVersion sql.NullInt64  `json:"sync_version"`
+	ID        string         `json:"id"`
+	ProjectID string         `json:"project_id"`
+	Content   string         `json:"content"`
+	Status    sql.NullString `json:"status"`
+	Priority  int            `json:"priority"`
+	DueDate   sql.NullString `json:"due_date"`
+	Tags      sql.NullString `json:"tags"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
+// sync_version is NULL for new items, will be set after successful push
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 	_, err := q.db.ExecContext(ctx, createTask,
 		arg.ID,
@@ -107,14 +106,13 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) error {
 		arg.Tags,
 		arg.CreatedAt,
 		arg.UpdatedAt,
-		arg.SyncVersion,
 	)
 	return err
 }
 
 const deleteProject = `-- name: DeleteProject :exec
-UPDATE projects 
-SET deleted_at = ?, updated_at = ?, sync_version = sync_version + 1
+UPDATE projects
+SET deleted_at = ?, updated_at = ?, sync_version = NULL
 WHERE id = ?
 `
 
@@ -124,14 +122,15 @@ type DeleteProjectParams struct {
 	ID        string         `json:"id"`
 }
 
+// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) error {
 	_, err := q.db.ExecContext(ctx, deleteProject, arg.DeletedAt, arg.UpdatedAt, arg.ID)
 	return err
 }
 
 const deleteTask = `-- name: DeleteTask :exec
-UPDATE tasks 
-SET deleted_at = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
+UPDATE tasks
+SET deleted_at = ?, updated_at = ?, sync_version = NULL
 WHERE id = ?
 `
 
@@ -141,6 +140,7 @@ type DeleteTaskParams struct {
 	ID        string         `json:"id"`
 }
 
+// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 func (q *Queries) DeleteTask(ctx context.Context, arg DeleteTaskParams) error {
 	_, err := q.db.ExecContext(ctx, deleteTask, arg.DeletedAt, arg.UpdatedAt, arg.ID)
 	return err
@@ -170,12 +170,13 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 
 const getProjectsToSync = `-- name: GetProjectsToSync :many
 SELECT id, slug, name, color, archived, created_at, updated_at, deleted_at, sync_version FROM projects
-WHERE sync_version > ?
+WHERE sync_version IS NULL
 ORDER BY updated_at
 `
 
-func (q *Queries) GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Project, error) {
-	rows, err := q.db.QueryContext(ctx, getProjectsToSync, syncVersion)
+// Get projects that need to be pushed (sync_version is NULL means "dirty")
+func (q *Queries) GetProjectsToSync(ctx context.Context) ([]Project, error) {
+	rows, err := q.db.QueryContext(ctx, getProjectsToSync)
 	if err != nil {
 		return nil, err
 	}
@@ -257,12 +258,13 @@ func (q *Queries) GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (
 
 const getTasksToSync = `-- name: GetTasksToSync :many
 SELECT id, project_id, content, status, priority, due_date, tags, created_at, updated_at, deleted_at, sync_version FROM tasks
-WHERE sync_version > ?
+WHERE sync_version IS NULL
 ORDER BY updated_at
 `
 
-func (q *Queries) GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, getTasksToSync, syncVersion)
+// Get tasks that need to be pushed (sync_version is NULL means "dirty")
+func (q *Queries) GetTasksToSync(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, getTasksToSync)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +385,92 @@ func (q *Queries) ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, e
 	return items, nil
 }
 
+const overwriteProject = `-- name: OverwriteProject :exec
+UPDATE projects
+SET slug = ?, name = ?, color = ?, updated_at = ?, sync_version = ?
+WHERE id = ?
+`
+
+type OverwriteProjectParams struct {
+	Slug        string         `json:"slug"`
+	Name        string         `json:"name"`
+	Color       sql.NullString `json:"color"`
+	UpdatedAt   string         `json:"updated_at"`
+	SyncVersion sql.NullInt64  `json:"sync_version"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) OverwriteProject(ctx context.Context, arg OverwriteProjectParams) error {
+	_, err := q.db.ExecContext(ctx, overwriteProject,
+		arg.Slug,
+		arg.Name,
+		arg.Color,
+		arg.UpdatedAt,
+		arg.SyncVersion,
+		arg.ID,
+	)
+	return err
+}
+
+const overwriteTask = `-- name: OverwriteTask :exec
+UPDATE tasks
+SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = ?
+WHERE id = ?
+`
+
+type OverwriteTaskParams struct {
+	ProjectID   string         `json:"project_id"`
+	Content     string         `json:"content"`
+	Status      sql.NullString `json:"status"`
+	Priority    int            `json:"priority"`
+	DueDate     sql.NullString `json:"due_date"`
+	Tags        sql.NullString `json:"tags"`
+	UpdatedAt   string         `json:"updated_at"`
+	SyncVersion sql.NullInt64  `json:"sync_version"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) OverwriteTask(ctx context.Context, arg OverwriteTaskParams) error {
+	_, err := q.db.ExecContext(ctx, overwriteTask,
+		arg.ProjectID,
+		arg.Content,
+		arg.Status,
+		arg.Priority,
+		arg.DueDate,
+		arg.Tags,
+		arg.UpdatedAt,
+		arg.SyncVersion,
+		arg.ID,
+	)
+	return err
+}
+
+const updateProject = `-- name: UpdateProject :exec
+UPDATE projects
+SET slug = ?, name = ?, color = ?, updated_at = ?, sync_version = NULL
+WHERE id = ?
+`
+
+type UpdateProjectParams struct {
+	Slug      string         `json:"slug"`
+	Name      string         `json:"name"`
+	Color     sql.NullString `json:"color"`
+	UpdatedAt string         `json:"updated_at"`
+	ID        string         `json:"id"`
+}
+
+// Set sync_version to NULL to mark as "needs push". Server will assign new version.
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) error {
+	_, err := q.db.ExecContext(ctx, updateProject,
+		arg.Slug,
+		arg.Name,
+		arg.Color,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateProjectSyncVersion = `-- name: UpdateProjectSyncVersion :exec
 UPDATE projects SET sync_version = ? WHERE id = ?
 `
@@ -399,7 +487,7 @@ func (q *Queries) UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjec
 
 const updateTask = `-- name: UpdateTask :exec
 UPDATE tasks
-SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
+SET project_id = ?, content = ?, status = ?, priority = ?, due_date = ?, tags = ?, updated_at = ?, sync_version = NULL
 WHERE id = ?
 `
 
@@ -414,6 +502,7 @@ type UpdateTaskParams struct {
 	ID        string         `json:"id"`
 }
 
+// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 	_, err := q.db.ExecContext(ctx, updateTask,
 		arg.ProjectID,
@@ -430,7 +519,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
 UPDATE tasks
-SET status = ?, updated_at = ?, sync_version = COALESCE(sync_version, 0) + 1
+SET status = ?, updated_at = ?, sync_version = NULL
 WHERE id = ?
 `
 
@@ -440,6 +529,7 @@ type UpdateTaskStatusParams struct {
 	ID        string         `json:"id"`
 }
 
+// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateTaskStatus, arg.Status, arg.UpdatedAt, arg.ID)
 	return err

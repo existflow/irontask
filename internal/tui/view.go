@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -38,6 +40,16 @@ func (m Model) View() string {
 	// Filter modal with live results
 	if m.mode == ModeFilter {
 		modal := m.renderFilterModal()
+		mainContent = lipgloss.Place(
+			m.width, m.height-2,
+			lipgloss.Center, lipgloss.Center,
+			modal,
+			lipgloss.WithWhitespaceChars(" "),
+		)
+	}
+
+	if m.mode == ModeConflict {
+		modal := m.renderConflictModal()
 		mainContent = lipgloss.Place(
 			m.width, m.height-2,
 			lipgloss.Center, lipgloss.Center,
@@ -299,6 +311,66 @@ func (m Model) renderFilterModal() string {
 	}
 
 	content += "\n" + HelpStyle.Render("↑↓:nav  Enter:select  Esc:close")
+
+	return ModalStyle.Width(modalWidth).Render(content)
+}
+
+func (m Model) renderConflictModal() string {
+	if len(m.conflicts) == 0 {
+		return ""
+	}
+	conflict := m.conflicts[0]
+	modalWidth := 60
+
+	content := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5555")).Render("⚠ Sync Conflict Detected") + "\n\n"
+	content += fmt.Sprintf("Conflict %d of %d\n\n", 1, len(m.conflicts))
+
+	content += fmt.Sprintf("Item: %s (%s)\n", conflict.ClientID, conflict.Type)
+
+	// Local version info
+	localContent := "Unknown"
+	if conflict.Type == "task" {
+		// Try to find content in encoded data
+		if conflict.ClientData.EncryptedContent != "" {
+			data, _ := base64.StdEncoding.DecodeString(conflict.ClientData.EncryptedContent)
+			var c struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal(data, &c); err == nil {
+				localContent = c.Content
+			}
+		}
+	} else {
+		localContent = conflict.ClientData.Name
+	}
+	content += lipgloss.NewStyle().Bold(true).Render("Local Version:") + "\n"
+	content += fmt.Sprintf("Last Modified: %s\n", conflict.ClientData.ClientUpdatedAt)
+	content += fmt.Sprintf("Content: %s\n\n", truncate(localContent, modalWidth-10))
+
+	// Server version info
+	serverContent := "Unknown"
+	if conflict.Type == "task" {
+		if conflict.ServerData.EncryptedContent != "" {
+			data, _ := base64.StdEncoding.DecodeString(conflict.ServerData.EncryptedContent)
+			var c struct {
+				Content string `json:"content"`
+			}
+			if err := json.Unmarshal(data, &c); err == nil {
+				serverContent = c.Content
+			}
+		}
+	} else {
+		serverContent = conflict.ServerData.Name
+	}
+	content += lipgloss.NewStyle().Bold(true).Render("Server Version:") + "\n"
+	// Server doesn't send updated_at explicitly in SyncItem, but SyncVersion roughly correlates
+	content += fmt.Sprintf("Sync Version: %d\n", conflict.ServerData.SyncVersion)
+	content += fmt.Sprintf("Content: %s\n\n", truncate(serverContent, modalWidth-10))
+
+	content += lipgloss.NewStyle().Foreground(Border).Render(strings.Repeat("─", modalWidth-6)) + "\n\n"
+	content += HelpStyle.Render("[L] Keep Local (Overwrite Server)") + "\n"
+	content += HelpStyle.Render("[S] Keep Server (Overwrite Local)") + "\n"
+	content += HelpStyle.Render("[Q] Ignore for now")
 
 	return ModalStyle.Width(modalWidth).Render(content)
 }

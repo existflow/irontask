@@ -65,6 +65,25 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Validate project exists
+	project, err := dbConn.GetProject(context.Background(), projectID)
+	if err != nil || project.ID == "" {
+		// Project doesn't exist - show error with available projects
+		projects, _ := dbConn.ListProjects(context.Background())
+		fmt.Printf("Error: project '%s' not found.\n\n", projectID)
+		if len(projects) > 0 {
+			fmt.Println("Available projects:")
+			for _, p := range projects {
+				fmt.Printf("  - %s (%s)\n", p.ID, p.Name)
+			}
+			fmt.Println("\nUse: task project new \"Project Name\" to create a new project")
+			fmt.Println("Or:  task add \"content\" --project <project-id>")
+		} else {
+			fmt.Println("No projects found. Create one with: task project new \"Project Name\"")
+		}
+		return fmt.Errorf("project '%s' not found", projectID)
+	}
+
 	// Validate priority
 	if addPriority < 1 || addPriority > 4 {
 		addPriority = model.PriorityLow
@@ -73,21 +92,19 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Create task
 	now := time.Now().Format(time.RFC3339)
 	err = dbConn.CreateTask(context.Background(), database.CreateTaskParams{
-		ID:          uuid.New().String(),
-		ProjectID:   projectID,
-		Content:     content,
-		Status:      sql.NullString{String: "process", Valid: true},
-		Priority:    addPriority,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
+		ID:        uuid.New().String(),
+		ProjectID: projectID,
+		Content:   content,
+		Status:    sql.NullString{String: "process", Valid: true},
+		Priority:  addPriority,
+		CreatedAt: now,
+		UpdatedAt: now,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
 
-	// Get project name for display
-	project, _ := dbConn.GetProject(context.Background(), projectID)
+	// Use project name for display (already fetched above)
 	projectName := projectID
 	if project.Name != "" {
 		projectName = project.Name

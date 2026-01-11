@@ -37,9 +37,12 @@ func New(dbURL string) (*Server, error) {
 	}
 
 	// Run migrations
+	logger.Info("Running database migrations")
 	if err := s.migrate(); err != nil {
-		return nil, err
+		logger.Error("Migration failed", logger.F("error", err))
+		return nil, fmt.Errorf("migration failed: %w", err)
 	}
+	logger.Info("Database migrations completed successfully")
 
 	// Setup Echo
 	s.setupEcho()
@@ -51,43 +54,45 @@ func (s *Server) setupEcho() {
 	e := echo.New()
 	e.HideBanner = true
 
-	// Custom logging middleware
+	// Order matters: RequestID must come before logging
+	e.Use(middleware.RequestID())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
+
+	// Consolidated request logging - single line with all info
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			start := time.Now()
 			req := c.Request()
-
-			// Log request
-			logger.Info("HTTP Request",
-				logger.F("method", req.Method),
-				logger.F("uri", req.RequestURI),
-				logger.F("remote", req.RemoteAddr))
+			reqID := c.Response().Header().Get(echo.HeaderXRequestID)
 
 			// Process request
 			err := next(c)
 
-			// Log response
+			// Log single line with request + response info
 			res := c.Response()
 			duration := time.Since(start)
 
-			logger.Info("HTTP Response",
-				logger.F("method", req.Method),
-				logger.F("uri", req.RequestURI),
-				logger.F("status", res.Status),
-				logger.F("size", res.Size),
-				logger.F("duration", duration.String()))
+			// Choose log level based on status
+			status := res.Status
+			logFn := logger.Info
+			if status >= 500 {
+				logFn = logger.Error
+			} else if status >= 400 {
+				logFn = logger.Warn
+			}
 
-			// Also print to console for visibility
-			fmt.Printf("REQUEST: %s %s  status=%d  size=%d  duration=%s\n",
-				req.Method, req.RequestURI, res.Status, res.Size, duration)
+			logFn("HTTP",
+				logger.F("id", reqID[:8]), // Short request ID
+				logger.F("method", req.Method),
+				logger.F("path", req.URL.Path),
+				logger.F("status", status),
+				logger.F("duration", duration.Round(time.Microsecond).String()),
+				logger.F("size", res.Size))
 
 			return err
 		}
 	})
-
-	e.Use(middleware.Recover())
-	e.Use(middleware.RequestID())
-	e.Use(middleware.CORS())
 
 	// Health check
 	e.GET("/health", s.handleHealth)

@@ -44,17 +44,18 @@ WHERE token = $1;
 UPDATE irontask.magic_links SET used = TRUE WHERE token = $1;
 
 -- name: UpsertProject :one
-INSERT INTO irontask.projects (user_id, client_id, slug, name, color, encrypted_data, sync_version, deleted, updated_at)
+INSERT INTO irontask.projects (user_id, client_id, slug, name, color, encrypted_data, sync_version, deleted, updated_at, client_updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1), 
-    $7, NOW())
+    nextval('irontask.sync_version_seq'), 
+    $7, NOW(), $8)
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET slug = EXCLUDED.slug,
     name = EXCLUDED.name,
     encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1),
-    updated_at = NOW()
+    sync_version = nextval('irontask.sync_version_seq'),
+    updated_at = NOW(),
+    client_updated_at = EXCLUDED.client_updated_at
 RETURNING sync_version;
 
 -- name: GetProjectsChanged :many
@@ -62,11 +63,16 @@ SELECT client_id, slug, name, 'project' as type, sync_version, encrypted_data, d
 FROM irontask.projects
 WHERE user_id = $1 AND sync_version > $2;
 
+-- name: GetProjectForConflict :one
+SELECT sync_version, updated_at, client_updated_at, slug, name, encrypted_data, deleted
+FROM irontask.projects
+WHERE user_id = $1 AND client_id = $2;
+
 -- name: UpsertTask :one
-INSERT INTO irontask.tasks (user_id, client_id, project_id, encrypted_content, status, priority, due_date, deleted, sync_version, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
-    NOW())
+INSERT INTO irontask.tasks (user_id, client_id, project_id, type, encrypted_content, status, priority, due_date, deleted, sync_version, updated_at, client_updated_at)
+VALUES ($1, $2, $3, 'task', $4, $5, $6, $7, $8, 
+    nextval('irontask.sync_version_seq'),
+    NOW(), $9)
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET project_id = EXCLUDED.project_id,
     encrypted_content = EXCLUDED.encrypted_content,
@@ -74,8 +80,9 @@ SET project_id = EXCLUDED.project_id,
     priority = EXCLUDED.priority,
     due_date = EXCLUDED.due_date,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
-    updated_at = NOW()
+    sync_version = nextval('irontask.sync_version_seq'),
+    updated_at = NOW(),
+    client_updated_at = EXCLUDED.client_updated_at
 RETURNING sync_version;
 
 -- name: GetTasksChanged :many
@@ -83,8 +90,15 @@ SELECT client_id, project_id, 'task' as type, sync_version, encrypted_content, s
 FROM irontask.tasks
 WHERE user_id = $1 AND sync_version > $2;
 
+-- name: GetTaskForConflict :one
+SELECT sync_version, updated_at, client_updated_at, status, priority, project_id, encrypted_content, due_date, deleted
+FROM irontask.tasks
+WHERE user_id = $1 AND client_id = $2;
+
 -- name: ClearTasks :exec
 DELETE FROM irontask.tasks WHERE user_id = $1;
 
 -- name: ClearProjects :exec
 DELETE FROM irontask.projects WHERE user_id = $1;
+
+

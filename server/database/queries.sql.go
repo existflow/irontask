@@ -125,6 +125,42 @@ func (q *Queries) GetMagicLink(ctx context.Context, token string) (GetMagicLinkR
 	return i, err
 }
 
+const getProjectForConflict = `-- name: GetProjectForConflict :one
+SELECT sync_version, updated_at, client_updated_at, slug, name, encrypted_data, deleted
+FROM irontask.projects
+WHERE user_id = $1 AND client_id = $2
+`
+
+type GetProjectForConflictParams struct {
+	UserID   uuid.UUID `json:"user_id"`
+	ClientID string    `json:"client_id"`
+}
+
+type GetProjectForConflictRow struct {
+	SyncVersion     sql.NullInt64 `json:"sync_version"`
+	UpdatedAt       sql.NullTime  `json:"updated_at"`
+	ClientUpdatedAt sql.NullTime  `json:"client_updated_at"`
+	Slug            string        `json:"slug"`
+	Name            string        `json:"name"`
+	EncryptedData   []byte        `json:"encrypted_data"`
+	Deleted         sql.NullBool  `json:"deleted"`
+}
+
+func (q *Queries) GetProjectForConflict(ctx context.Context, arg GetProjectForConflictParams) (GetProjectForConflictRow, error) {
+	row := q.db.QueryRowContext(ctx, getProjectForConflict, arg.UserID, arg.ClientID)
+	var i GetProjectForConflictRow
+	err := row.Scan(
+		&i.SyncVersion,
+		&i.UpdatedAt,
+		&i.ClientUpdatedAt,
+		&i.Slug,
+		&i.Name,
+		&i.EncryptedData,
+		&i.Deleted,
+	)
+	return i, err
+}
+
 const getProjectsChanged = `-- name: GetProjectsChanged :many
 SELECT client_id, slug, name, 'project' as type, sync_version, encrypted_data, deleted
 FROM irontask.projects
@@ -192,6 +228,46 @@ func (q *Queries) GetSession(ctx context.Context, token string) (GetSessionRow, 
 	row := q.db.QueryRowContext(ctx, getSession, token)
 	var i GetSessionRow
 	err := row.Scan(&i.UserID, &i.ExpiresAt)
+	return i, err
+}
+
+const getTaskForConflict = `-- name: GetTaskForConflict :one
+SELECT sync_version, updated_at, client_updated_at, status, priority, project_id, encrypted_content, due_date, deleted
+FROM irontask.tasks
+WHERE user_id = $1 AND client_id = $2
+`
+
+type GetTaskForConflictParams struct {
+	UserID   uuid.UUID `json:"user_id"`
+	ClientID string    `json:"client_id"`
+}
+
+type GetTaskForConflictRow struct {
+	SyncVersion      sql.NullInt64  `json:"sync_version"`
+	UpdatedAt        sql.NullTime   `json:"updated_at"`
+	ClientUpdatedAt  sql.NullTime   `json:"client_updated_at"`
+	Status           sql.NullString `json:"status"`
+	Priority         sql.NullInt32  `json:"priority"`
+	ProjectID        string         `json:"project_id"`
+	EncryptedContent []byte         `json:"encrypted_content"`
+	DueDate          sql.NullString `json:"due_date"`
+	Deleted          sql.NullBool   `json:"deleted"`
+}
+
+func (q *Queries) GetTaskForConflict(ctx context.Context, arg GetTaskForConflictParams) (GetTaskForConflictRow, error) {
+	row := q.db.QueryRowContext(ctx, getTaskForConflict, arg.UserID, arg.ClientID)
+	var i GetTaskForConflictRow
+	err := row.Scan(
+		&i.SyncVersion,
+		&i.UpdatedAt,
+		&i.ClientUpdatedAt,
+		&i.Status,
+		&i.Priority,
+		&i.ProjectID,
+		&i.EncryptedContent,
+		&i.DueDate,
+		&i.Deleted,
+	)
 	return i, err
 }
 
@@ -330,28 +406,30 @@ func (q *Queries) MarkMagicLinkUsed(ctx context.Context, token string) error {
 }
 
 const upsertProject = `-- name: UpsertProject :one
-INSERT INTO irontask.projects (user_id, client_id, slug, name, color, encrypted_data, sync_version, deleted, updated_at)
+INSERT INTO irontask.projects (user_id, client_id, slug, name, color, encrypted_data, sync_version, deleted, updated_at, client_updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1), 
-    $7, NOW())
+    nextval('irontask.sync_version_seq'), 
+    $7, NOW(), $8)
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET slug = EXCLUDED.slug,
     name = EXCLUDED.name,
     encrypted_data = EXCLUDED.encrypted_data,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.projects WHERE user_id = $1),
-    updated_at = NOW()
+    sync_version = nextval('irontask.sync_version_seq'),
+    updated_at = NOW(),
+    client_updated_at = EXCLUDED.client_updated_at
 RETURNING sync_version
 `
 
 type UpsertProjectParams struct {
-	UserID        uuid.UUID      `json:"user_id"`
-	ClientID      string         `json:"client_id"`
-	Slug          string         `json:"slug"`
-	Name          string         `json:"name"`
-	Color         sql.NullString `json:"color"`
-	EncryptedData []byte         `json:"encrypted_data"`
-	Deleted       sql.NullBool   `json:"deleted"`
+	UserID          uuid.UUID      `json:"user_id"`
+	ClientID        string         `json:"client_id"`
+	Slug            string         `json:"slug"`
+	Name            string         `json:"name"`
+	Color           sql.NullString `json:"color"`
+	EncryptedData   []byte         `json:"encrypted_data"`
+	Deleted         sql.NullBool   `json:"deleted"`
+	ClientUpdatedAt sql.NullTime   `json:"client_updated_at"`
 }
 
 func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) (sql.NullInt64, error) {
@@ -363,6 +441,7 @@ func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) (s
 		arg.Color,
 		arg.EncryptedData,
 		arg.Deleted,
+		arg.ClientUpdatedAt,
 	)
 	var sync_version sql.NullInt64
 	err := row.Scan(&sync_version)
@@ -370,10 +449,10 @@ func (q *Queries) UpsertProject(ctx context.Context, arg UpsertProjectParams) (s
 }
 
 const upsertTask = `-- name: UpsertTask :one
-INSERT INTO irontask.tasks (user_id, client_id, project_id, encrypted_content, status, priority, due_date, deleted, sync_version, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 
-    (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
-    NOW())
+INSERT INTO irontask.tasks (user_id, client_id, project_id, type, encrypted_content, status, priority, due_date, deleted, sync_version, updated_at, client_updated_at)
+VALUES ($1, $2, $3, 'task', $4, $5, $6, $7, $8, 
+    nextval('irontask.sync_version_seq'),
+    NOW(), $9)
 ON CONFLICT (user_id, client_id) DO UPDATE
 SET project_id = EXCLUDED.project_id,
     encrypted_content = EXCLUDED.encrypted_content,
@@ -381,8 +460,9 @@ SET project_id = EXCLUDED.project_id,
     priority = EXCLUDED.priority,
     due_date = EXCLUDED.due_date,
     deleted = EXCLUDED.deleted,
-    sync_version = (SELECT COALESCE(MAX(sync_version), 0) + 1 FROM irontask.tasks WHERE user_id = $1),
-    updated_at = NOW()
+    sync_version = nextval('irontask.sync_version_seq'),
+    updated_at = NOW(),
+    client_updated_at = EXCLUDED.client_updated_at
 RETURNING sync_version
 `
 
@@ -395,6 +475,7 @@ type UpsertTaskParams struct {
 	Priority         sql.NullInt32  `json:"priority"`
 	DueDate          sql.NullString `json:"due_date"`
 	Deleted          sql.NullBool   `json:"deleted"`
+	ClientUpdatedAt  sql.NullTime   `json:"client_updated_at"`
 }
 
 func (q *Queries) UpsertTask(ctx context.Context, arg UpsertTaskParams) (sql.NullInt64, error) {
@@ -407,6 +488,7 @@ func (q *Queries) UpsertTask(ctx context.Context, arg UpsertTaskParams) (sql.Nul
 		arg.Priority,
 		arg.DueDate,
 		arg.Deleted,
+		arg.ClientUpdatedAt,
 	)
 	var sync_version sql.NullInt64
 	err := row.Scan(&sync_version)

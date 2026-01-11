@@ -7,10 +7,14 @@ CREATE TABLE projects (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
-    sync_version INTEGER DEFAULT 0
+    sync_version INTEGER  -- NULL means "needs sync", set by server after push
 );
 
 CREATE INDEX idx_projects_slug ON projects(slug);
+
+-- Default inbox project (created by migration, not schema)
+-- INSERT OR IGNORE INTO projects (id, slug, name, color, created_at, updated_at)
+-- VALUES ('inbox', 'inbox', 'Inbox', '#6C757D', datetime('now'), datetime('now'));
 
 CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
@@ -23,7 +27,7 @@ CREATE TABLE tasks (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
-    sync_version INTEGER DEFAULT 0,
+    sync_version INTEGER,  -- NULL means "needs sync", set by server after push
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 

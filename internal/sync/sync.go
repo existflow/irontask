@@ -31,6 +31,16 @@ type SyncItem struct {
 	DueDate          string `json:"due_date,omitempty"`
 	SyncVersion      int64  `json:"sync_version"`
 	Deleted          bool   `json:"deleted"`
+	ClientUpdatedAt  string `json:"client_updated_at,omitempty"` // Client timestamp for conflict detection
+}
+
+// ConflictItem represents a conflicting item
+type ConflictItem struct {
+	ClientID      string   `json:"client_id"`
+	Type          string   `json:"type"`
+	ServerVersion int64    `json:"server_version"`
+	ServerData    SyncItem `json:"server_data"`
+	ClientData    SyncItem `json:"client_data"`
 }
 
 // SyncPullResponse is the response from pull
@@ -41,13 +51,15 @@ type SyncPullResponse struct {
 
 // SyncPushResponse is the response from push
 type SyncPushResponse struct {
-	Updated []SyncItem `json:"updated"`
+	Updated   []SyncItem     `json:"updated"`
+	Conflicts []ConflictItem `json:"conflicts,omitempty"`
 }
 
 // SyncResult holds sync statistics
 type SyncResult struct {
-	Pushed int
-	Pulled int
+	Pushed    int
+	Pulled    int
+	Conflicts []ConflictItem
 }
 
 // SyncMode defines how the sync should be performed
@@ -90,19 +102,21 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 			return nil, fmt.Errorf("failed to clear remote data: %w", err)
 		}
 		// 2. Push local changes
-		pushed, err := c.pushChanges(database)
+		pushed, conflicts, err := c.pushChanges(database)
 		if err != nil {
 			return nil, fmt.Errorf("push failed: %w", err)
 		}
 		result.Pushed = pushed
+		result.Conflicts = conflicts
 
 	default: // SyncModeMerge
 		// 1. Push local changes
-		pushed, err := c.pushChanges(database)
+		pushed, conflicts, err := c.pushChanges(database)
 		if err != nil {
 			return nil, fmt.Errorf("push failed: %w", err)
 		}
 		result.Pushed = pushed
+		result.Conflicts = conflicts
 
 		// 2. Pull remote changes
 		pulled, err := c.pullChanges(database)
@@ -121,12 +135,12 @@ func (c *Client) Sync(database *db.DB, mode SyncMode) (*SyncResult, error) {
 }
 
 // pushChanges sends local changes to server
-func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
+func (c *Client) pushChanges(dbConn *db.DB) (int, []ConflictItem, error) {
 	logger.Debug("Starting push changes")
 	var items []SyncItem
 
-	// Get projects that need syncing (changed since last sync)
-	projects, _ := dbConn.GetProjectsToSync(context.Background(), sql.NullInt64{Int64: c.config.LastSync, Valid: true})
+	// Get projects that need syncing (sync_version is NULL means dirty)
+	projects, _ := dbConn.GetProjectsToSync(context.Background())
 
 	logger.Debug("Found projects to sync", logger.F("count", len(projects)), logger.F("lastSync", c.config.LastSync),
 		logger.F("projects", projects),
@@ -144,18 +158,19 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 		})
 
 		items = append(items, SyncItem{
-			ClientID:      p.ID,
-			Type:          "project",
-			Slug:          p.Slug,
-			Name:          p.Name,
-			EncryptedData: base64.StdEncoding.EncodeToString(data),
-			SyncVersion:   p.SyncVersion.Int64,
-			Deleted:       p.DeletedAt.Valid,
+			ClientID:        p.ID,
+			Type:            "project",
+			Slug:            p.Slug,
+			Name:            p.Name,
+			EncryptedData:   base64.StdEncoding.EncodeToString(data),
+			SyncVersion:     p.SyncVersion.Int64,
+			Deleted:         p.DeletedAt.Valid,
+			ClientUpdatedAt: p.UpdatedAt, // Send client timestamp for conflict detection
 		})
 	}
 
-	// Get tasks that need syncing (changed since last sync)
-	tasks, _ := dbConn.GetTasksToSync(context.Background(), sql.NullInt64{Int64: c.config.LastSync, Valid: true})
+	// Get tasks that need syncing (sync_version is NULL means dirty)
+	tasks, _ := dbConn.GetTasksToSync(context.Background())
 	for _, t := range tasks {
 		dueDate := ""
 		if t.DueDate.Valid {
@@ -181,12 +196,13 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 			DueDate:          dueDate,
 			SyncVersion:      t.SyncVersion.Int64,
 			Deleted:          t.DeletedAt.Valid,
+			ClientUpdatedAt:  t.UpdatedAt, // Send client timestamp for conflict detection
 		})
 	}
 
 	if len(items) == 0 {
 		logger.Debug("No items to push")
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	logger.Info("Pushing changes to server", logger.F("itemCount", len(items)))
@@ -209,7 +225,7 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.Error("HTTP request failed", logger.F("error", err), logger.F("url", url))
-		return 0, err
+		return 0, nil, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -224,14 +240,35 @@ func (c *Client) pushChanges(dbConn *db.DB) (int, error) {
 		logger.Error("Push failed",
 			logger.F("status", resp.StatusCode),
 			logger.F("response", string(respBody)))
-		return 0, fmt.Errorf("server error: %s", string(respBody))
+		return 0, nil, fmt.Errorf("server error: %s", string(respBody))
 	}
 
 	var result SyncPushResponse
 	_ = json.NewDecoder(resp.Body).Decode(&result)
 
-	logger.Info("Push completed", logger.F("updated", len(result.Updated)))
-	return len(result.Updated), nil
+	logger.Info("Push completed",
+		logger.F("updated", len(result.Updated)),
+		logger.F("conflicts", len(result.Conflicts)))
+
+	// Update local sync_version with server-assigned values
+	ctx := context.Background()
+	for _, item := range result.Updated {
+		if item.Type == "project" {
+			_ = dbConn.UpdateProjectSyncVersion(ctx, database.UpdateProjectSyncVersionParams{
+				ID:          item.ClientID,
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+			logger.Debug("Updated project sync_version", logger.F("id", item.ClientID), logger.F("version", item.SyncVersion))
+		} else if item.Type == "task" {
+			_ = dbConn.UpdateTaskSyncVersion(ctx, database.UpdateTaskSyncVersionParams{
+				ID:          item.ClientID,
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+			logger.Debug("Updated task sync_version", logger.F("id", item.ClientID), logger.F("version", item.SyncVersion))
+		}
+	}
+
+	return len(result.Updated), result.Conflicts, nil
 }
 
 // pullChanges gets remote changes from server
@@ -307,11 +344,11 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				}
 			}
 
-			// Upsert project
+			// Upsert project with server sync_version
 			_, err := dbConn.GetProject(ctx, item.ClientID)
 			if err != nil {
 				// Not found, create
-				logger.Debug("Creating project from sync", logger.F("id", item.ClientID), logger.F("name", name))
+				logger.Debug("Creating project from sync", logger.F("id", item.ClientID), logger.F("name", name), logger.F("syncVersion", item.SyncVersion))
 				_ = dbConn.CreateProject(ctx, database.CreateProjectParams{
 					ID:        item.ClientID,
 					Slug:      slug,
@@ -320,8 +357,22 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
+				// Set sync_version from server
+				_ = dbConn.UpdateProjectSyncVersion(ctx, database.UpdateProjectSyncVersionParams{
+					ID:          item.ClientID,
+					SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+				})
 			} else {
-				logger.Debug("Project already exists, skipping", logger.F("id", item.ClientID))
+				// Exists, update with server data and sync_version
+				logger.Debug("Updating project from sync", logger.F("id", item.ClientID), logger.F("name", name), logger.F("syncVersion", item.SyncVersion))
+				_ = dbConn.OverwriteProject(ctx, database.OverwriteProjectParams{
+					ID:          item.ClientID,
+					Slug:        slug,
+					Name:        name,
+					Color:       sql.NullString{String: color, Valid: true},
+					UpdatedAt:   time.Now().Format(time.RFC3339),
+					SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+				})
 			}
 
 		case "task":
@@ -343,11 +394,11 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 				status = "process"
 			}
 
-			// Upsert task
+			// Upsert task with server sync_version
 			tExisting, err := dbConn.GetTask(ctx, item.ClientID)
 			if err != nil {
 				// Create
-				logger.Debug("Creating task from sync", logger.F("id", item.ClientID), logger.F("content", content))
+				logger.Debug("Creating task from sync", logger.F("id", item.ClientID), logger.F("content", content), logger.F("syncVersion", item.SyncVersion))
 				_ = dbConn.CreateTask(ctx, database.CreateTaskParams{
 					ID:        item.ClientID,
 					ProjectID: item.ProjectID,
@@ -358,17 +409,23 @@ func (c *Client) pullChanges(dbConn *db.DB) (int, error) {
 					CreatedAt: time.Now().Format(time.RFC3339),
 					UpdatedAt: time.Now().Format(time.RFC3339),
 				})
+				// Set sync_version from server
+				_ = dbConn.UpdateTaskSyncVersion(ctx, database.UpdateTaskSyncVersionParams{
+					ID:          item.ClientID,
+					SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+				})
 			} else {
-				// Update
-				logger.Debug("Updating task from sync", logger.F("id", item.ClientID), logger.F("content", content))
-				_ = dbConn.UpdateTask(ctx, database.UpdateTaskParams{
-					ID:        tExisting.ID,
-					ProjectID: item.ProjectID,
-					Content:   content,
-					Status:    sql.NullString{String: status, Valid: true},
-					Priority:  item.Priority,
-					DueDate:   sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
-					UpdatedAt: time.Now().Format(time.RFC3339),
+				// Exists, update with server data and sync_version using OverwriteTask
+				logger.Debug("Updating task from sync", logger.F("id", item.ClientID), logger.F("content", content), logger.F("syncVersion", item.SyncVersion))
+				_ = dbConn.OverwriteTask(ctx, database.OverwriteTaskParams{
+					ID:          tExisting.ID,
+					ProjectID:   item.ProjectID,
+					Content:     content,
+					Status:      sql.NullString{String: status, Valid: true},
+					Priority:    item.Priority,
+					DueDate:     sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
+					UpdatedAt:   time.Now().Format(time.RFC3339),
+					SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
 				})
 			}
 		}

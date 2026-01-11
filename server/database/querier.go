@@ -19,8 +19,10 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	DeleteSession(ctx context.Context, token string) error
 	GetMagicLink(ctx context.Context, token string) (GetMagicLinkRow, error)
+	GetProjectForConflict(ctx context.Context, arg GetProjectForConflictParams) (GetProjectForConflictRow, error)
 	GetProjectsChanged(ctx context.Context, arg GetProjectsChangedParams) ([]GetProjectsChangedRow, error)
 	GetSession(ctx context.Context, token string) (GetSessionRow, error)
+	GetTaskForConflict(ctx context.Context, arg GetTaskForConflictParams) (GetTaskForConflictRow, error)
 	GetTasksChanged(ctx context.Context, arg GetTasksChangedParams) ([]GetTasksChangedRow, error)
 	GetUserByEmail(ctx context.Context, email string) (GetUserByEmailRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)

@@ -13,19 +13,31 @@ type Querier interface {
 	ClearProjects(ctx context.Context) error
 	ClearTasks(ctx context.Context) error
 	CountTasks(ctx context.Context, projectID string) (CountTasksRow, error)
+	// sync_version is NULL for new items, will be set after successful push
 	CreateProject(ctx context.Context, arg CreateProjectParams) error
+	// sync_version is NULL for new items, will be set after successful push
 	CreateTask(ctx context.Context, arg CreateTaskParams) error
+	// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 	DeleteProject(ctx context.Context, arg DeleteProjectParams) error
+	// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 	DeleteTask(ctx context.Context, arg DeleteTaskParams) error
 	GetProject(ctx context.Context, id string) (Project, error)
-	GetProjectsToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Project, error)
+	// Get projects that need to be pushed (sync_version is NULL means "dirty")
+	GetProjectsToSync(ctx context.Context) ([]Project, error)
 	GetTask(ctx context.Context, id string) (Task, error)
 	GetTaskPartial(ctx context.Context, dollar_1 sql.NullString) (Task, error)
-	GetTasksToSync(ctx context.Context, syncVersion sql.NullInt64) ([]Task, error)
+	// Get tasks that need to be pushed (sync_version is NULL means "dirty")
+	GetTasksToSync(ctx context.Context) ([]Task, error)
 	ListProjects(ctx context.Context) ([]Project, error)
 	ListTasks(ctx context.Context, arg ListTasksParams) ([]Task, error)
+	OverwriteProject(ctx context.Context, arg OverwriteProjectParams) error
+	OverwriteTask(ctx context.Context, arg OverwriteTaskParams) error
+	// Set sync_version to NULL to mark as "needs push". Server will assign new version.
+	UpdateProject(ctx context.Context, arg UpdateProjectParams) error
 	UpdateProjectSyncVersion(ctx context.Context, arg UpdateProjectSyncVersionParams) error
+	// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
+	// Set sync_version to NULL to mark as "needs push". Server will assign new version.
 	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error
 	UpdateTaskSyncVersion(ctx context.Context, arg UpdateTaskSyncVersionParams) error
 }

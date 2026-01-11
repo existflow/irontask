@@ -8,6 +8,7 @@ func (db *DB) migrate() error {
 		migrationCreateProjects,
 		migrationCreateTasks,
 		migrationCreateSyncState,
+		migrationServerSideSyncVersion, // v2: Server-side sync versioning
 	}
 
 	for i, m := range migrations {
@@ -29,10 +30,14 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
-    sync_version INTEGER DEFAULT 0
+    sync_version INTEGER  -- NULL means "needs sync"
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
+
+-- Create default inbox project
+INSERT OR IGNORE INTO projects (id, slug, name, color, created_at, updated_at)
+VALUES ('inbox', 'inbox', 'Inbox', '#6C757D', datetime('now'), datetime('now'));
 `
 
 const migrationCreateTasks = `
@@ -47,7 +52,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT,
-    sync_version INTEGER DEFAULT 0,
+    sync_version INTEGER,  -- NULL means "needs sync"
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 
@@ -60,4 +65,20 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+`
+
+// migrationServerSideSyncVersion updates existing databases for server-side sync versioning.
+// - Sets sync_version to NULL for all items to force re-sync
+// - NULL means "needs to be pushed", server assigns version after push
+// - Creates inbox project if it doesn't exist (for existing databases)
+const migrationServerSideSyncVersion = `
+-- Reset sync_version to NULL for items that haven't been synced properly
+-- Items with sync_version = 0 were never synced (old default)
+-- After this migration, sync_version IS NULL means "dirty/needs push"
+UPDATE projects SET sync_version = NULL WHERE sync_version = 0 OR sync_version IS NULL;
+UPDATE tasks SET sync_version = NULL WHERE sync_version = 0 OR sync_version IS NULL;
+
+-- Ensure inbox project exists for existing databases
+INSERT OR IGNORE INTO projects (id, slug, name, color, created_at, updated_at)
+VALUES ('inbox', 'inbox', 'Inbox', '#6C757D', datetime('now'), datetime('now'));
 `

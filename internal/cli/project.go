@@ -82,13 +82,12 @@ func runProjectNew(cmd *cobra.Command, args []string) error {
 
 	now := time.Now().Format(time.RFC3339)
 	if err := dbConn.CreateProject(context.Background(), database.CreateProjectParams{
-		ID:          id,
-		Slug:        slug,
-		Name:        name,
-		Color:       sql.NullString{String: projectColor, Valid: true},
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
+		ID:        id,
+		Slug:      slug,
+		Name:      name,
+		Color:     sql.NullString{String: projectColor, Valid: true},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}); err != nil {
 		logger.Error("Failed to create project", logger.F("error", err), logger.F("name", name))
 		return fmt.Errorf("failed to create project: %w", err)

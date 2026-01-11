@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/existflow/irontask/internal/database"
 	"github.com/existflow/irontask/internal/model"
+	"github.com/existflow/irontask/internal/sync"
 	"github.com/google/uuid"
 )
 
@@ -21,9 +24,14 @@ type tickMsg time.Time
 // syncRefreshMsg is sent when remote changes are pulled
 type syncRefreshMsg struct{}
 
+// conflictMsg is sent when conflicts are detected
+type conflictMsg struct {
+	conflicts []sync.ConflictItem
+}
+
 // Init initializes the model with a tick command
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(), m.waitForSyncRefresh())
+	return tea.Batch(tickCmd(), m.waitForSyncRefresh(), m.waitForSyncConflict())
 }
 
 func tickCmd() tea.Cmd {
@@ -40,6 +48,17 @@ func (m Model) waitForSyncRefresh() tea.Cmd {
 	return func() tea.Msg {
 		<-m.syncRefreshChan
 		return syncRefreshMsg{}
+	}
+}
+
+// waitForSyncConflict listens for sync conflict signals
+func (m Model) waitForSyncConflict() tea.Cmd {
+	if m.syncConflictChan == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		conflicts := <-m.syncConflictChan
+		return conflictMsg{conflicts: conflicts}
 	}
 }
 
@@ -69,6 +88,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.message = "Synced from cloud"
 		return m, m.waitForSyncRefresh()
 
+	case conflictMsg:
+		m.conflicts = msg.conflicts
+		if len(m.conflicts) > 0 {
+			m.mode = ModeConflict
+			m.message = fmt.Sprintf("Conflict detected! (%d items)", len(m.conflicts))
+		}
+		return m, m.waitForSyncConflict()
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -81,6 +108,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateInput(msg)
 		case ModeFilter:
 			return m.updateFilter(msg)
+		case ModeConflict:
+			return m.handleConflictKeys(msg)
 		case ModeHelp:
 			m.mode = ModeNormal
 			return m, nil
@@ -377,14 +406,13 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if proj != nil {
 				now := time.Now().Format(time.RFC3339)
 				err := m.db.CreateTask(context.Background(), database.CreateTaskParams{
-					ID:          uuid.New().String(),
-					ProjectID:   proj.ID,
-					Content:     value,
-					Status:      sql.NullString{String: "process", Valid: true},
-					Priority:    model.PriorityLow,
-					CreatedAt:   now,
-					UpdatedAt:   now,
-					SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
+					ID:        uuid.New().String(),
+					ProjectID: proj.ID,
+					Content:   value,
+					Status:    sql.NullString{String: "process", Valid: true},
+					Priority:  model.PriorityLow,
+					CreatedAt: now,
+					UpdatedAt: now,
 				})
 				if err != nil {
 					m.message = fmt.Sprintf("Error adding task: %v", err)
@@ -400,13 +428,12 @@ func (m Model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Generate slug from name (lowercase, replace spaces with dashes)
 			slug := strings.ToLower(strings.ReplaceAll(value, " ", "-"))
 			err := m.db.CreateProject(context.Background(), database.CreateProjectParams{
-				ID:          uuid.New().String()[:8],
-				Slug:        slug,
-				Name:        value,
-				Color:       sql.NullString{String: "#4ECDC4", Valid: true},
-				CreatedAt:   now,
-				UpdatedAt:   now,
-				SyncVersion: sql.NullInt64{Int64: 1, Valid: true},
+				ID:        uuid.New().String()[:8],
+				Slug:      slug,
+				Name:      value,
+				Color:     sql.NullString{String: "#4ECDC4", Valid: true},
+				CreatedAt: now,
+				UpdatedAt: now,
 			})
 			if err != nil {
 				m.message = fmt.Sprintf("Error creating project: %v", err)
@@ -522,5 +549,186 @@ func (m *Model) applyFilter() {
 	// Store filtered tasks for display
 	if m.searchAll {
 		m.allTasks = tasksToSearch
+	}
+}
+
+func (m *Model) handleConflictKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.conflicts) == 0 {
+		m.mode = ModeNormal
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "l", "L": // Keep Local
+		m.resolveConflict(true)
+	case "s", "S": // Keep Server
+		m.resolveConflict(false)
+	case "q", "esc":
+		m.mode = ModeNormal
+		// Clear conflicts if ignored
+		m.conflicts = nil
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *Model) resolveConflict(keepLocal bool) {
+	if len(m.conflicts) == 0 {
+		return
+	}
+	conflict := m.conflicts[0]
+
+	if keepLocal {
+		// Update local timestamp to force push next time
+		ctx := context.Background()
+		now := time.Now().Format(time.RFC3339)
+
+		if conflict.Type == "task" {
+			t, err := m.db.GetTask(ctx, conflict.ClientID)
+			if err == nil {
+				_ = m.db.UpdateTask(ctx, database.UpdateTaskParams{
+					ID:        t.ID,
+					ProjectID: t.ProjectID,
+					Content:   t.Content,
+					Status:    t.Status,
+					Priority:  t.Priority,
+					DueDate:   t.DueDate,
+					Tags:      t.Tags,
+					UpdatedAt: now,
+				})
+			}
+		} else if conflict.Type == "project" {
+			p, err := m.db.GetProject(ctx, conflict.ClientID)
+			if err == nil {
+				_ = m.db.UpdateProject(ctx, database.UpdateProjectParams{
+					ID:        p.ID,
+					Slug:      p.Slug,
+					Name:      p.Name,
+					Color:     p.Color,
+					UpdatedAt: now,
+				})
+			}
+		}
+		m.message = "Keeping local version (will resync)"
+	} else {
+		// Apply server version
+		m.applyServerItem(conflict.ServerData)
+		m.message = "Applied server version"
+	}
+
+	// Remove resolved conflict
+	m.conflicts = m.conflicts[1:]
+	if len(m.conflicts) == 0 {
+		m.mode = ModeNormal
+		// Trigger sync if we kept local (to push the forced update)
+		if keepLocal && m.autoSync != nil {
+			m.autoSync.TriggerSync()
+		}
+		m.loadData()
+	}
+}
+
+func (m *Model) applyServerItem(item sync.SyncItem) {
+	ctx := context.Background()
+
+	switch item.Type {
+	case "project":
+		name := item.Name
+		color := "#4ECDC4"
+		slug := item.Slug
+		if slug == "" {
+			slug = item.ClientID
+		}
+		if name == "" {
+			data, err := base64.StdEncoding.DecodeString(item.EncryptedData)
+			if err == nil {
+				var p struct {
+					Name  string `json:"name"`
+					Color string `json:"color"`
+				}
+				_ = json.Unmarshal(data, &p)
+				name = p.Name
+				if p.Color != "" {
+					color = p.Color
+				}
+			}
+		}
+
+		// Upsert project with server sync_version
+		_, err := m.db.GetProject(ctx, item.ClientID)
+		if err != nil {
+			_ = m.db.CreateProject(ctx, database.CreateProjectParams{
+				ID:        item.ClientID,
+				Slug:      slug,
+				Name:      name,
+				Color:     sql.NullString{String: color, Valid: true},
+				CreatedAt: time.Now().Format(time.RFC3339),
+				UpdatedAt: time.Now().Format(time.RFC3339),
+			})
+			// Set sync_version from server
+			_ = m.db.UpdateProjectSyncVersion(ctx, database.UpdateProjectSyncVersionParams{
+				ID:          item.ClientID,
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+		} else {
+			_ = m.db.OverwriteProject(ctx, database.OverwriteProjectParams{
+				ID:          item.ClientID,
+				Slug:        slug,
+				Name:        name,
+				Color:       sql.NullString{String: color, Valid: true},
+				UpdatedAt:   time.Now().Format(time.RFC3339),
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+		}
+
+	case "task":
+		content := ""
+		if item.EncryptedContent != "" {
+			data, err := base64.StdEncoding.DecodeString(item.EncryptedContent)
+			if err == nil {
+				var c struct {
+					Content string `json:"content"`
+				}
+				_ = json.Unmarshal(data, &c)
+				content = c.Content
+			}
+		}
+
+		status := item.Status
+		if status == "" {
+			status = "process"
+		}
+
+		// Upsert task with server sync_version
+		_, err := m.db.GetTask(ctx, item.ClientID)
+		if err != nil {
+			_ = m.db.CreateTask(ctx, database.CreateTaskParams{
+				ID:        item.ClientID,
+				ProjectID: item.ProjectID,
+				Content:   content,
+				Status:    sql.NullString{String: status, Valid: true},
+				Priority:  item.Priority,
+				DueDate:   sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
+				CreatedAt: time.Now().Format(time.RFC3339),
+				UpdatedAt: time.Now().Format(time.RFC3339),
+			})
+			// Set sync_version from server
+			_ = m.db.UpdateTaskSyncVersion(ctx, database.UpdateTaskSyncVersionParams{
+				ID:          item.ClientID,
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+		} else {
+			_ = m.db.OverwriteTask(ctx, database.OverwriteTaskParams{
+				ID:          item.ClientID,
+				ProjectID:   item.ProjectID,
+				Content:     content,
+				Status:      sql.NullString{String: status, Valid: true},
+				Priority:    item.Priority,
+				DueDate:     sql.NullString{String: item.DueDate, Valid: item.DueDate != ""},
+				Tags:        sql.NullString{Valid: false}, // Empty tags for now
+				UpdatedAt:   time.Now().Format(time.RFC3339),
+				SyncVersion: sql.NullInt64{Int64: item.SyncVersion, Valid: true},
+			})
+		}
 	}
 }
